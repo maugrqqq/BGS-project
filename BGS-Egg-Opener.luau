@@ -25,7 +25,7 @@ local Window = Rayfield:CreateWindow({
 
 local Tab = Window:CreateTab("Egg Opener", 4483362458)
 
-local selectedEgg = "Spotted Egg"
+local selectedEgg = "Hacker Egg"
 local autoHatchEnabled = false
 local tripleHatchEnabled = false
 local weekendEventEnabled = false
@@ -48,6 +48,16 @@ if #eggList == 0 then
 end
 
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
+local leaderstats = game.Players.LocalPlayer:WaitForChild('leaderstats')
+local eggsOpenedValue = leaderstats:WaitForChild('Eggs Opened')
+
+local lastEggsCount = eggsOpenedValue.Value
+local lastUpdateTime = os.clock()
+local eggsPerMinute = 0
+local eggsPerHour = 0
+
+local StatsLabel = Tab:CreateLabel("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
+local RateLabel = Tab:CreateLabel("Rate: 0/min | 0/hr")
 
 local function hatchEgg()
     local success, err = pcall(function()
@@ -58,10 +68,37 @@ local function hatchEgg()
     end
 end
 
+local function updateStats()
+    local currentCount = eggsOpenedValue.Value
+    local currentTime = os.clock()
+    local deltaTime = currentTime - lastUpdateTime
+    
+    if deltaTime > 0 then
+        local deltaEggs = currentCount - lastEggsCount
+        local perSecond = deltaEggs / deltaTime
+        eggsPerMinute = perSecond * 60
+        eggsPerHour = perSecond * 3600
+        
+        if deltaEggs < 0 then
+            deltaEggs = 0
+            eggsPerMinute = 0
+            eggsPerHour = 0
+        end
+    end
+    
+    if currentTime - lastUpdateTime >= 1 then
+        lastEggsCount = currentCount
+        lastUpdateTime = currentTime
+    end
+    
+    StatsLabel:Set("Eggs Opened: " .. tostring(currentCount))
+    RateLabel:Set(string.format("Rate: %.0f/min | %.0f/hr", eggsPerMinute, eggsPerHour))
+end
+
 Tab:CreateDropdown({
     Name = "Select Egg",
     Options = eggList,
-    CurrentOption = {"Spotted Egg"},
+    CurrentOption = {"Hacker Egg"},
     Callback = function(OptionTable)
         selectedEgg = OptionTable[1]
         print('[BGS] Selected:', selectedEgg)
@@ -111,6 +148,7 @@ task.spawn(function()
         if autoHatchEnabled then
             hatchEgg()
         end
+        updateStats()
         wait(0.5)
     end
 end)
