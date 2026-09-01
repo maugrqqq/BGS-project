@@ -29,6 +29,9 @@ local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
 local tripleHatchEnabled = false
 local speedBoostEnabled = false
+local shinyBoostEnabled = false
+local mythicBoostEnabled = false
+local noCooldownEnabled = false
 local currentCooldown = 3
 
 local eggList = {
@@ -60,18 +63,44 @@ local eggList = {
 }
 
 local EggService = require(game.ReplicatedStorage.Assets.Modules.EggService)
+local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
 local LocalPlayer = game.Players.LocalPlayer
 
 local oldGetHatchCooldown = EggService.GetHatchCooldown
+local oldIs2xShinyEnabled = Services:GetService("Is2xShinyEnabled")
+local oldIs2xMythicEnabled = Services:GetService("Is2xMythicEnabled")
+local oldIs2xSpeedEnabled = Services:GetService("Is2xSpeedEnabled")
 
 local function updateCooldown()
-    local baseCooldown = oldGetHatchCooldown(EggService, LocalPlayer)
-    if speedBoostEnabled then
-        currentCooldown = baseCooldown * 0.75
+    if noCooldownEnabled then
+        currentCooldown = 0.05
     else
-        currentCooldown = baseCooldown
+        local baseCooldown = oldGetHatchCooldown(EggService, LocalPlayer)
+        if speedBoostEnabled then
+            currentCooldown = baseCooldown * 0.75
+        else
+            currentCooldown = baseCooldown
+        end
     end
     return currentCooldown
+end
+
+local function updateBoosts()
+    if shinyBoostEnabled then
+        Services:SetService("Is2xShinyEnabled", function() return true end)
+    else
+        Services:SetService("Is2xShinyEnabled", oldIs2xShinyEnabled)
+    end
+    if mythicBoostEnabled then
+        Services:SetService("Is2xMythicEnabled", function() return true end)
+    else
+        Services:SetService("Is2xMythicEnabled", oldIs2xMythicEnabled)
+    end
+    if speedBoostEnabled then
+        Services:SetService("Is2xSpeedEnabled", function() return true end)
+    else
+        Services:SetService("Is2xSpeedEnabled", oldIs2xSpeedEnabled)
+    end
 end
 
 Tab:CreateDropdown({
@@ -100,10 +129,38 @@ Tab:CreateToggle({
 })
 
 Tab:CreateToggle({
-    Name = "2x Speed Boost (Client-side)",
+    Name = "2x Speed Boost",
     CurrentValue = false,
     Callback = function(Value)
         speedBoostEnabled = Value
+        updateBoosts()
+        updateCooldown()
+    end
+})
+
+Tab:CreateToggle({
+    Name = "2x Shiny Luck",
+    CurrentValue = false,
+    Callback = function(Value)
+        shinyBoostEnabled = Value
+        updateBoosts()
+    end
+})
+
+Tab:CreateToggle({
+    Name = "2x Mythic Luck",
+    CurrentValue = false,
+    Callback = function(Value)
+        mythicBoostEnabled = Value
+        updateBoosts()
+    end
+})
+
+Tab:CreateToggle({
+    Name = "No Cooldown (0.05s)",
+    CurrentValue = false,
+    Callback = function(Value)
+        noCooldownEnabled = Value
         updateCooldown()
     end
 })
