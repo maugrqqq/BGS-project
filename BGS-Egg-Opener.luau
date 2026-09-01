@@ -28,9 +28,7 @@ local Tab = Window:CreateTab("Egg Opener", 4483362458)
 local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
 local tripleHatchEnabled = false
-local speedBoostEnabled = false
-local luckBoostEnabled = false
-local noCooldownEnabled = false
+local weekendEventEnabled = false
 local currentCooldown = 3
 
 local eggList = {
@@ -62,43 +60,21 @@ local eggList = {
 }
 
 local EggService = require(game.ReplicatedStorage.Assets.Modules.EggService)
-local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
 local LocalPlayer = game.Players.LocalPlayer
+local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
 
-local oldGetHatchCooldown = EggService.GetHatchCooldown
-local oldIs2xLuckEnabled = Services:GetService("Is2xLuckEnabled")
-local oldIs2xSpeedEnabled = Services:GetService("Is2xSpeedEnabled")
+local oldIsActive = WeekendEventSchedule.IsActive
 
-local function updateCooldown()
-    if noCooldownEnabled then
-        EggService.GetHatchCooldown = function(self, p1, p2)
-            return 0.05
+local function updateWeekendEvent()
+    if weekendEventEnabled then
+        WeekendEventSchedule.IsActive = function(self, p1, p2)
+            return true
         end
-        currentCooldown = 0.05
-    elseif speedBoostEnabled then
-        EggService.GetHatchCooldown = function(self, p1, p2)
-            local base = oldGetHatchCooldown(self, p1, p2)
-            return base * 0.75
-        end
-        currentCooldown = oldGetHatchCooldown(EggService, LocalPlayer) * 0.75
     else
-        EggService.GetHatchCooldown = oldGetHatchCooldown
-        currentCooldown = oldGetHatchCooldown(EggService, LocalPlayer)
+        WeekendEventSchedule.IsActive = oldIsActive
     end
+    currentCooldown = EggService:GetHatchCooldown(LocalPlayer)
     return currentCooldown
-end
-
-local function updateBoosts()
-    if luckBoostEnabled then
-        Services:SetService("Is2xLuckEnabled", function() return true end)
-    else
-        Services:SetService("Is2xLuckEnabled", oldIs2xLuckEnabled)
-    end
-    if speedBoostEnabled then
-        Services:SetService("Is2xSpeedEnabled", function() return true end)
-    else
-        Services:SetService("Is2xSpeedEnabled", oldIs2xSpeedEnabled)
-    end
 end
 
 Tab:CreateDropdown({
@@ -126,31 +102,17 @@ Tab:CreateToggle({
     end
 })
 
-Tab:CreateToggle({
-    Name = "2x Speed Event",
-    CurrentValue = false,
-    Callback = function(Value)
-        speedBoostEnabled = Value
-        updateBoosts()
-        updateCooldown()
-    end
+Tab:CreateParagraph({
+    Title = "Events",
+    Content = "Activate weekend events (2x Speed, 2x Luck, etc.)"
 })
 
 Tab:CreateToggle({
-    Name = "2x Luck Event",
+    Name = "Enable Weekend Event",
     CurrentValue = false,
     Callback = function(Value)
-        luckBoostEnabled = Value
-        updateBoosts()
-    end
-})
-
-Tab:CreateToggle({
-    Name = "No Cooldown (0.05s)",
-    CurrentValue = false,
-    Callback = function(Value)
-        noCooldownEnabled = Value
-        updateCooldown()
+        weekendEventEnabled = Value
+        updateWeekendEvent()
     end
 })
 
@@ -174,7 +136,7 @@ task.spawn(function()
                 RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
             end
         end
-        local cooldown = updateCooldown()
+        local cooldown = EggService:GetHatchCooldown(LocalPlayer)
         wait(cooldown)
     end
 end)
