@@ -28,7 +28,8 @@ local Tab = Window:CreateTab("Egg Opener", 4483362458)
 local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
 local tripleHatchEnabled = false
-local hatchInterval = 0.5
+local speedBoostEnabled = false
+local currentCooldown = 3
 
 local eggList = {
     "Common Egg",
@@ -58,22 +59,27 @@ local eggList = {
     "Slushy Egg"
 }
 
+local EggService = require(game.ReplicatedStorage.Assets.Modules.EggService)
+local LocalPlayer = game.Players.LocalPlayer
+
+local oldGetHatchCooldown = EggService.GetHatchCooldown
+
+local function updateCooldown()
+    local baseCooldown = oldGetHatchCooldown(EggService, LocalPlayer)
+    if speedBoostEnabled then
+        currentCooldown = baseCooldown * 0.75
+    else
+        currentCooldown = baseCooldown
+    end
+    return currentCooldown
+end
+
 Tab:CreateDropdown({
     Name = "Select Egg",
     Options = eggList,
     CurrentOption = {"Spotted Egg"},
     Callback = function(Option)
         selectedEgg = Option
-    end
-})
-
-Tab:CreateSlider({
-    Name = "Hatch Interval (seconds)",
-    Range = {0.1, 5},
-    Increment = 0.1,
-    CurrentValue = 0.5,
-    Callback = function(Value)
-        hatchInterval = Value
     end
 })
 
@@ -93,6 +99,17 @@ Tab:CreateToggle({
     end
 })
 
+Tab:CreateToggle({
+    Name = "2x Speed Boost (Client-side)",
+    CurrentValue = false,
+    Callback = function(Value)
+        speedBoostEnabled = Value
+        updateCooldown()
+    end
+})
+
+Tab:CreateLabel("Current Cooldown: " .. tostring(currentCooldown) .. "s")
+
 Tab:CreateButton({
     Name = "Hatch Egg",
     Callback = function()
@@ -111,6 +128,6 @@ task.spawn(function()
                 RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
             end
         end
-        wait(hatchInterval)
+        wait(updateCooldown())
     end
 end)
