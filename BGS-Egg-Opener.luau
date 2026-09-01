@@ -100,6 +100,28 @@ local function checkTimer()
     end
 end
 
+local function enableWeekendEvents()
+    local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
+    WeekendEventSchedule.IsActive = function(self, p1, p2) return true end
+    
+    local Is2xShinyModule = require(game.ReplicatedStorage.Assets.Modules.Is2xShinyEnabled)
+    local Is2xMythicModule = require(game.ReplicatedStorage.Assets.Modules.Is2xMythicEnabled)
+    
+    pcall(function() debug.setupvalue(Is2xShinyModule, 1, true) end)
+    pcall(function() debug.setupvalue(Is2xMythicModule, 1, true) end)
+end
+
+local function disableWeekendEvents()
+    local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
+    WeekendEventSchedule.IsActive = function(self, p1, p2) return false end
+    
+    local Is2xShinyModule = require(game.ReplicatedStorage.Assets.Modules.Is2xShinyEnabled)
+    local Is2xMythicModule = require(game.ReplicatedStorage.Assets.Modules.Is2xMythicEnabled)
+    
+    pcall(function() debug.setupvalue(Is2xShinyModule, 1, false) end)
+    pcall(function() debug.setupvalue(Is2xMythicModule, 1, false) end)
+end
+
 Tab:CreateDropdown({
     Name = "Select Egg",
     Options = eggList,
@@ -138,21 +160,20 @@ Tab:CreateToggle({
 
 Tab:CreateParagraph({
     Title = "Events",
-    Content = "Activate weekend events"
+    Content = "Activate 2x Speed, 2x Luck, 2x Shiny, 2x Mythic"
 })
 
 Tab:CreateToggle({
-    Name = "Enable Weekend Event",
+    Name = "Enable All Events",
     CurrentValue = false,
     Callback = function(Value)
         weekendEventEnabled = Value
-        local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
         if Value then
-            WeekendEventSchedule.IsActive = function(self, p1, p2) return true end
+            enableWeekendEvents()
         else
-            WeekendEventSchedule.IsActive = function(self, p1, p2) return false end
+            disableWeekendEvents()
         end
-        print('[BGS] Weekend Event:', Value)
+        print('[BGS] All Events:', Value)
     end
 })
 
