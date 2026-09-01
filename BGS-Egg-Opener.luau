@@ -62,9 +62,9 @@ Tab:CreateDropdown({
     Name = "Select Egg",
     Options = eggList,
     CurrentOption = {"Spotted Egg"},
-    Callback = function(Option)
-        selectedEgg = Option
-        print('[BGS] Selected:', Option)
+    Callback = function(OptionTable)
+        selectedEgg = OptionTable[1]
+        print('[BGS] Selected:', selectedEgg)
     end
 })
 
