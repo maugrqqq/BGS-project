@@ -84,6 +84,7 @@ Tab:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         autoHatchEnabled = Value
+        print("[BGS] Auto Hatch:", Value)
     end
 })
 
@@ -92,6 +93,7 @@ Tab:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         tripleHatchEnabled = Value
+        print("[BGS] Triple Hatch:", Value)
     end
 })
 
@@ -106,15 +108,21 @@ Tab:CreateToggle({
     Callback = function(Value)
         weekendEventEnabled = Value
         updateWeekendEvent()
+        print("[BGS] Weekend Event:", Value)
     end
 })
 
 task.spawn(function()
+    local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
     while true do
-        if autoHatchEnabled then
-            local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
-            if RemoteEvent then
+        if autoHatchEnabled and RemoteEvent then
+            local success, err = pcall(function()
                 RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
+            end)
+            if not success then
+                print("[BGS] Error:", err)
+            else
+                print("[BGS] Hatched:", selectedEgg, "Triple:", tripleHatchEnabled)
             end
         end
         wait(0.5)
