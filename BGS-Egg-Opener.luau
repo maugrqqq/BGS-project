@@ -56,6 +56,9 @@ local lastUpdateTime = os.clock()
 local eggsPerMinute = 0
 local eggsPerHour = 0
 
+local statsWindow = {}
+local MAX_STATS_WINDOW = 10
+
 local StatsLabel = Tab:CreateLabel("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
 local RateLabel = Tab:CreateLabel("Rate: 0/min | 0/hr")
 
@@ -75,21 +78,39 @@ local function updateStats()
     
     if deltaTime > 0 then
         local deltaEggs = currentCount - lastEggsCount
-        local perSecond = deltaEggs / deltaTime
-        eggsPerMinute = perSecond * 60
-        eggsPerHour = perSecond * 3600
-        
-        if deltaEggs < 0 then
-            deltaEggs = 0
-            eggsPerMinute = 0
-            eggsPerHour = 0
+        if deltaEggs > 0 then
+            table.insert(statsWindow, {
+                time = currentTime,
+                count = deltaEggs
+            })
         end
     end
     
-    if currentTime - lastUpdateTime >= 1 then
-        lastEggsCount = currentCount
-        lastUpdateTime = currentTime
+    while #statsWindow > 0 and currentTime - statsWindow[1].time > MAX_STATS_WINDOW do
+        table.remove(statsWindow, 1)
     end
+    
+    local totalEggs = 0
+    local windowDuration = math.min(currentTime - lastUpdateTime, MAX_STATS_WINDOW)
+    
+    for _, entry in ipairs(statsWindow) do
+        totalEggs = totalEggs + entry.count
+    end
+    
+    if windowDuration > 0 and #statsWindow > 0 then
+        local oldestTime = statsWindow[1].time
+        local actualDuration = currentTime - oldestTime
+        if actualDuration > 0 then
+            eggsPerMinute = (totalEggs / actualDuration) * 60
+            eggsPerHour = (totalEggs / actualDuration) * 3600
+        end
+    elseif deltaTime > 5 then
+        eggsPerMinute = 0
+        eggsPerHour = 0
+    end
+    
+    lastEggsCount = currentCount
+    lastUpdateTime = currentTime
     
     StatsLabel:Set("Eggs Opened: " .. tostring(currentCount))
     RateLabel:Set(string.format("Rate: %.0f/min | %.0f/hr", eggsPerMinute, eggsPerHour))
