@@ -29,35 +29,30 @@ local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
 local tripleHatchEnabled = false
 local weekendEventEnabled = false
-local currentCooldown = 3
 
-local eggList = {
-    "Common Egg",
-    "Spotted Egg",
-    "Ice Shard Egg",
-    "Spikey Egg",
-    "Magma Egg",
-    "Crystal Egg",
-    "Lunar Egg",
-    "Void Shard Egg",
-    "Nightmare Egg",
-    "Hell Egg",
-    "Rainbow Egg",
-    "New Year Egg",
-    "100K Egg",
-    "Valentine Egg",
-    "Lucky Egg",
-    "300m Egg",
-    "Snowman Egg",
-    "Festive Egg",
-    "Globe Egg",
-    "Hot Cocoa Egg",
-    "Frost Egg",
-    "Christmas Egg",
-    "Ice Cream Egg",
-    "Gummy Egg",
-    "Slushy Egg"
-}
+local eggsFolder = game:GetService('Workspace'):FindFirstChild('Eggs')
+local eggList = {}
+
+if eggsFolder then
+    for _, child in ipairs(eggsFolder:GetChildren()) do
+        if child:IsA('Model') and child.Name:find('Egg') then
+            table.insert(eggList, child.Name)
+        end
+    end
+end
+
+table.sort(eggList)
+
+if #eggList == 0 then
+    eggList = {
+        "Common Egg",
+        "Spotted Egg",
+        "Ice Shard Egg",
+        "Hacker Egg",
+        "Alien Egg",
+        "Space Crystal Egg"
+    }
+end
 
 local EggService = require(game.ReplicatedStorage.Assets.Modules.EggService)
 local LocalPlayer = game.Players.LocalPlayer
@@ -73,8 +68,6 @@ local function updateWeekendEvent()
     else
         WeekendEventSchedule.IsActive = oldIsActive
     end
-    currentCooldown = EggService:GetHatchCooldown(LocalPlayer)
-    return currentCooldown
 end
 
 Tab:CreateDropdown({
@@ -116,18 +109,6 @@ Tab:CreateToggle({
     end
 })
 
-Tab:CreateLabel("Current Cooldown: " .. tostring(currentCooldown) .. "s")
-
-Tab:CreateButton({
-    Name = "Hatch Egg",
-    Callback = function()
-        local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
-        if RemoteEvent then
-            RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
-        end
-    end
-})
-
 task.spawn(function()
     while true do
         if autoHatchEnabled then
@@ -136,7 +117,6 @@ task.spawn(function()
                 RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
             end
         end
-        local cooldown = EggService:GetHatchCooldown(LocalPlayer)
-        wait(cooldown)
+        wait(0.5)
     end
 end)
