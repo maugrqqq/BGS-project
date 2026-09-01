@@ -71,14 +71,19 @@ local oldIs2xSpeedEnabled = Services:GetService("Is2xSpeedEnabled")
 
 local function updateCooldown()
     if noCooldownEnabled then
-        currentCooldown = 0.05
-    else
-        local baseCooldown = oldGetHatchCooldown(EggService, LocalPlayer)
-        if speedBoostEnabled then
-            currentCooldown = baseCooldown * 0.75
-        else
-            currentCooldown = baseCooldown
+        EggService.GetHatchCooldown = function(self, p1, p2)
+            return 0.05
         end
+        currentCooldown = 0.05
+    elseif speedBoostEnabled then
+        EggService.GetHatchCooldown = function(self, p1, p2)
+            local base = oldGetHatchCooldown(self, p1, p2)
+            return base * 0.75
+        end
+        currentCooldown = oldGetHatchCooldown(EggService, LocalPlayer) * 0.75
+    else
+        EggService.GetHatchCooldown = oldGetHatchCooldown
+        currentCooldown = oldGetHatchCooldown(EggService, LocalPlayer)
     end
     return currentCooldown
 end
@@ -169,6 +174,7 @@ task.spawn(function()
                 RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
             end
         end
-        wait(updateCooldown())
+        local cooldown = updateCooldown()
+        wait(cooldown)
     end
 end)
