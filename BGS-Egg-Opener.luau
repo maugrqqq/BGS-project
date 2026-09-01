@@ -95,8 +95,8 @@ local function checkTimer()
     else
         local currentCount = eggsOpenedValue.Value
         local progressEggs = currentCount - countStart
-        local projectedMinute = progressEggs / (elapsed / 60)
-        RateLabel:Set(string.format("Progress: %d/%d | %.0f/min", progressEggs, 60 - math.floor(elapsed), projectedMinute))
+        local remainingTime = 60 - elapsed
+        RateLabel:Set(string.format("Progress: %d eggs | %.0fs left | %.0f/min", progressEggs, remainingTime, progressEggs / (elapsed / 60)))
     end
 end
 
@@ -163,6 +163,6 @@ task.spawn(function()
         end
         StatsLabel:Set("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
         checkTimer()
-        wait(0.5)
+        wait(0.1)
     end
 end)
