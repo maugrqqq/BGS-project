@@ -1,25 +1,31 @@
-local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/sirius-menu/rayfield/main/source.lua'))()
 
-local Window = OrionLib:MakeWindow({
+local Window = Rayfield:CreateWindow({
     Name = "BGS Egg Opener",
-    HidePremium = false,
-    IntroText = "BGS Project",
-    SaveConfig = true,
-    ConfigFolder = "BGS-Egg-Opener"
+    Icon = 4483362458,
+    LoadingTitle = "BGS Project",
+    LoadingSubtitle = "by maugrqqq",
+    Theme = "Default",
+    DisableRayfieldPrompts = false,
+    DisableBuildWarnings = false,
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = nil,
+        FileName = "BGS_Egg_Opener"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "",
+        RememberJoins = true
+    },
+    KeySystem = false
 })
 
-local Tab = Window:MakeTab({
-    Name = "Egg Opener",
-    Icon = "rbxassetid://4483345998",
-    PremiumOnly = false
-})
-
-local Section = Tab:AddSection({
-    Name = "Egg Selection"
-})
+local Tab = Window:CreateTab("Egg Opener", 4483362458)
 
 local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
+local hatchInterval = 0.5
 
 local eggList = {
     "Common Egg",
@@ -49,82 +55,51 @@ local eggList = {
     "Slushy Egg"
 }
 
-local dropdown = Section:AddDropdown({
+Tab:CreateDropdown({
     Name = "Select Egg",
-    Default = "Spotted Egg",
     Options = eggList,
-    Callback = function(Value)
-        selectedEgg = Value
-        OrionLib:MakeNotification({
-            Name = "Egg Selected",
-            Content = "Selected: " .. Value,
-            Time = 3
-        })
+    CurrentOption = {"Spotted Egg"},
+    Callback = function(Option)
+        selectedEgg = Option
     end
 })
 
-local toggle = Section:AddToggle({
+Tab:CreateSlider({
+    Name = "Hatch Interval (seconds)",
+    Range = {0.1, 5},
+    Increment = 0.1,
+    CurrentValue = 0.5,
+    Callback = function(Value)
+        hatchInterval = Value
+    end
+})
+
+Tab:CreateToggle({
     Name = "Auto Hatch Selected Egg",
-    Default = false,
+    CurrentValue = false,
     Callback = function(Value)
         autoHatchEnabled = Value
-        if Value then
-            OrionLib:MakeNotification({
-                Name = "Auto Hatch",
-                Content = "Enabled - Opening " .. selectedEgg,
-                Time = 3
-            })
-        else
-            OrionLib:MakeNotification({
-                Name = "Auto Hatch",
-                Content = "Disabled",
-                Time = 3
-            })
+    end
+})
+
+Tab:CreateButton({
+    Name = "Open Selected Egg",
+    Callback = function()
+        local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
+        if RemoteEvent then
+            RemoteEvent:FireServer("PurchaseEgg", selectedEgg, false)
         end
     end
 })
-
-local function fireRemote(remoteName, ...)
-    local args = {...}
-    local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
-    if RemoteEvent then
-        RemoteEvent:FireServer(remoteName, unpack(args))
-    else
-        warn("NetworkRemoteEvent not found")
-    end
-end
-
-local function openEgg(eggName)
-    fireRemote("PurchaseEgg", eggName, false)
-    OrionLib:MakeNotification({
-        Name = "Opening Egg",
-        Content = "Attempting to open: " .. eggName,
-        Time = 3
-    })
-end
-
-Section:AddButton({
-    Name = "Open Selected Egg",
-    Callback = function()
-        openEgg(selectedEgg)
-    end
-})
-
-local lastRemoteCall = 0
-local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
-if RemoteEvent then
-    RemoteEvent.OnClientEvent:Connect(function(remoteName, ...)
-        lastRemoteCall = os.time()
-    end)
-end
 
 task.spawn(function()
     while true do
         if autoHatchEnabled then
-            openEgg(selectedEgg)
+            local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
+            if RemoteEvent then
+                RemoteEvent:FireServer("PurchaseEgg", selectedEgg, false)
+            end
         end
-        wait(1)
+        wait(hatchInterval)
     end
 end)
-
-OrionLib:Init()
