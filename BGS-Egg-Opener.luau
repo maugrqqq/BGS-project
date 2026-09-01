@@ -22,6 +22,8 @@ end
 
 local config = loadConfig()
 
+local DailyRewardsModule = require(game.ReplicatedStorage.Assets.Modules.ItemDataService.DailyRewardsModule)
+
 task.spawn(function()
     local CoreGui = game:GetService('CoreGui')
     while true do
@@ -39,6 +41,7 @@ local Window = Rayfield:CreateWindow({Name='BGS Egg Opener', Icon=4483362458, Lo
 local MainTab = Window:CreateTab('Main', 4483362458)
 local EventTab = Window:CreateTab('Events', 4483362458)
 local WebhookTab = Window:CreateTab('Webhook', 4483362458)
+local TasksTab = Window:CreateTab('Tasks', 4483362458)
 
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
 local autoHatchEnabled = config.autoHatchEnabled or false
@@ -46,6 +49,9 @@ local tripleHatchEnabled = config.tripleHatchEnabled or false
 local webhookEnabled = config.webhookEnabled or false
 local webhookURL = config.webhookURL or ''
 local eventsEnabled = config.eventsEnabled or false
+local autoGroupBenefits = config.autoGroupBenefits or false
+local autoSpinToWin = config.autoSpinToWin or false
+local autoDailyRewards = config.autoDailyRewards or false
 
 local LocalPlayer = game.Players.LocalPlayer
 local Workspace = game:GetService('Workspace')
@@ -83,9 +89,7 @@ local function startTeleportLoop()
         local root = char:FindFirstChild('HumanoidRootPart')
         if not root then return end
         local eggPos = getEggPosition()
-        if eggPos then
-            root.CFrame = CFrame.new(eggPos + Vector3.new(0, 10, 0))
-        end
+        if eggPos then root.CFrame = CFrame.new(eggPos + Vector3.new(0, 10, 0)) end
     end)
 end
 
@@ -95,6 +99,56 @@ end
 
 local function hatchEgg()
     pcall(function() Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled) end)
+end
+
+local function formatTime(seconds)
+    local hours = math.floor(seconds / 3600)
+    local mins = math.floor((seconds % 3600) / 60)
+    local secs = math.floor(seconds % 60)
+    if hours > 0 then return string.format('%dh %dm %ds', hours, mins, secs) end
+    return string.format('%dm %ds', mins, secs)
+end
+
+local function getDailyInfo()
+    local itemData = DailyRewardsModule:GetItemData()
+    local challenge = itemData.challenge
+    local challengeType = challenge[1]
+    local target = challenge[2]
+    
+    local current = 0
+    local leaderstats = LocalPlayer:WaitForChild('leaderstats')
+    
+    if challengeType == 'Eggs' then
+        current = leaderstats['Eggs Opened'].Value
+    elseif challengeType == 'Gems' then
+        current = leaderstats.Gems.Value
+    elseif challengeType == 'Coins' then
+        current = leaderstats.Coins.Value
+    elseif challengeType == 'Bubbles' then
+        current = leaderstats['Bubbles Blown'].Value
+    elseif challengeType == 'Legendaries' then
+        current = math.min(leaderstats['Eggs Opened'].Value, target)
+    end
+    
+    local timeUntil = DailyRewardsModule:GetTimeUntilTomorrow()
+    
+    if current >= target then
+        return string.format('Quest: %s %d/%d | Next: %s', challengeType, math.min(current, target), target, formatTime(timeUntil))
+    else
+        return string.format('Quest: %s %d/%d', challengeType, current, target)
+    end
+end
+
+local function collectGroupReward()
+    pcall(function() Event:FireServer('CollectGroupReward') end)
+end
+
+local function spinToWin()
+    pcall(function() Event:FireServer('SpinToWin') end)
+end
+
+local function claimDaily()
+    pcall(function() Event:FireServer('ClaimDailyReward') end)
 end
 
 local function enableEvents()
@@ -121,7 +175,11 @@ local function sendWebhook(message)
 end
 
 local function saveCurrent()
-    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled, webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled})
+    saveConfig({
+        selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
+        webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
+        autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards
+    })
 end
 
 NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
@@ -145,12 +203,26 @@ WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets 
 WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Callback=function(v) webhookEnabled = v saveCurrent() end})
 WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 
+TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
+TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v) autoGroupBenefits = v saveCurrent() end})
+local GroupLabel = TasksTab:CreateLabel('Ready')
+TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v) autoSpinToWin = v saveCurrent() end})
+local SpinLabel = TasksTab:CreateLabel('Ready')
+TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v) autoDailyRewards = v saveCurrent() end})
+local DailyLabel = TasksTab:CreateLabel(getDailyInfo())
+
 if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
 task.spawn(function()
     while true do
         if autoHatchEnabled then hatchEgg() end
-        wait(0.5)
+        if autoGroupBenefits then collectGroupReward() end
+        if autoSpinToWin then spinToWin() end
+        if autoDailyRewards then claimDaily() end
+        
+        DailyLabel:Set(getDailyInfo())
+        
+        wait(1)
     end
 end)
