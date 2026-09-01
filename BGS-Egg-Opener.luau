@@ -27,6 +27,7 @@ local Tab = Window:CreateTab("Egg Opener", 4483362458)
 
 local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
+local tripleHatchEnabled = false
 local hatchInterval = 0.5
 
 local eggList = {
@@ -77,19 +78,27 @@ Tab:CreateSlider({
 })
 
 Tab:CreateToggle({
-    Name = "Auto Hatch Selected Egg",
+    Name = "Open Selected Egg",
     CurrentValue = false,
     Callback = function(Value)
         autoHatchEnabled = Value
     end
 })
 
+Tab:CreateToggle({
+    Name = "Triple Hatch",
+    CurrentValue = false,
+    Callback = function(Value)
+        tripleHatchEnabled = Value
+    end
+})
+
 Tab:CreateButton({
-    Name = "Open Selected Egg",
+    Name = "Hatch Egg",
     Callback = function()
         local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
         if RemoteEvent then
-            RemoteEvent:FireServer("PurchaseEgg", selectedEgg, false)
+            RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
         end
     end
 })
@@ -99,7 +108,7 @@ task.spawn(function()
         if autoHatchEnabled then
             local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
             if RemoteEvent then
-                RemoteEvent:FireServer("PurchaseEgg", selectedEgg, false)
+                RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
             end
         end
         wait(hatchInterval)
