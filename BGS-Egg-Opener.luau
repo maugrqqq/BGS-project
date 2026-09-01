@@ -29,8 +29,7 @@ local selectedEgg = "Spotted Egg"
 local autoHatchEnabled = false
 local tripleHatchEnabled = false
 local speedBoostEnabled = false
-local shinyBoostEnabled = false
-local mythicBoostEnabled = false
+local luckBoostEnabled = false
 local noCooldownEnabled = false
 local currentCooldown = 3
 
@@ -67,8 +66,7 @@ local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
 local LocalPlayer = game.Players.LocalPlayer
 
 local oldGetHatchCooldown = EggService.GetHatchCooldown
-local oldIs2xShinyEnabled = Services:GetService("Is2xShinyEnabled")
-local oldIs2xMythicEnabled = Services:GetService("Is2xMythicEnabled")
+local oldIs2xLuckEnabled = Services:GetService("Is2xLuckEnabled")
 local oldIs2xSpeedEnabled = Services:GetService("Is2xSpeedEnabled")
 
 local function updateCooldown()
@@ -86,15 +84,10 @@ local function updateCooldown()
 end
 
 local function updateBoosts()
-    if shinyBoostEnabled then
-        Services:SetService("Is2xShinyEnabled", function() return true end)
+    if luckBoostEnabled then
+        Services:SetService("Is2xLuckEnabled", function() return true end)
     else
-        Services:SetService("Is2xShinyEnabled", oldIs2xShinyEnabled)
-    end
-    if mythicBoostEnabled then
-        Services:SetService("Is2xMythicEnabled", function() return true end)
-    else
-        Services:SetService("Is2xMythicEnabled", oldIs2xMythicEnabled)
+        Services:SetService("Is2xLuckEnabled", oldIs2xLuckEnabled)
     end
     if speedBoostEnabled then
         Services:SetService("Is2xSpeedEnabled", function() return true end)
@@ -129,7 +122,7 @@ Tab:CreateToggle({
 })
 
 Tab:CreateToggle({
-    Name = "2x Speed Boost",
+    Name = "2x Speed Event",
     CurrentValue = false,
     Callback = function(Value)
         speedBoostEnabled = Value
@@ -139,19 +132,10 @@ Tab:CreateToggle({
 })
 
 Tab:CreateToggle({
-    Name = "2x Shiny Luck",
+    Name = "2x Luck Event",
     CurrentValue = false,
     Callback = function(Value)
-        shinyBoostEnabled = Value
-        updateBoosts()
-    end
-})
-
-Tab:CreateToggle({
-    Name = "2x Mythic Luck",
-    CurrentValue = false,
-    Callback = function(Value)
-        mythicBoostEnabled = Value
+        luckBoostEnabled = Value
         updateBoosts()
     end
 })
