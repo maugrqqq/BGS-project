@@ -51,16 +51,15 @@ local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 local leaderstats = game.Players.LocalPlayer:WaitForChild('leaderstats')
 local eggsOpenedValue = leaderstats:WaitForChild('Eggs Opened')
 
-local lastEggsCount = eggsOpenedValue.Value
-local lastUpdateTime = os.clock()
+local StatsLabel = Tab:CreateLabel("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
+local RateLabel = Tab:CreateLabel("Rate: calculating...")
+
+local countStart = 0
+local countEnd = 0
+local timerStarted = false
+local timerStartTime = 0
 local eggsPerMinute = 0
 local eggsPerHour = 0
-
-local statsWindow = {}
-local MAX_STATS_WINDOW = 10
-
-local StatsLabel = Tab:CreateLabel("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
-local RateLabel = Tab:CreateLabel("Rate: 0/min | 0/hr")
 
 local function hatchEgg()
     local success, err = pcall(function()
@@ -71,49 +70,34 @@ local function hatchEgg()
     end
 end
 
-local function updateStats()
-    local currentCount = eggsOpenedValue.Value
-    local currentTime = os.clock()
-    local deltaTime = currentTime - lastUpdateTime
+local function startTimer()
+    countStart = eggsOpenedValue.Value
+    timerStarted = true
+    timerStartTime = os.clock()
+    print('[BGS] Timer started at:', countStart)
+end
+
+local function checkTimer()
+    if not timerStarted then return end
     
-    if deltaTime > 0 then
-        local deltaEggs = currentCount - lastEggsCount
-        if deltaEggs > 0 then
-            table.insert(statsWindow, {
-                time = currentTime,
-                count = deltaEggs
-            })
-        end
+    local elapsed = os.clock() - timerStartTime
+    
+    if elapsed >= 60 then
+        countEnd = eggsOpenedValue.Value
+        eggsPerMinute = countEnd - countStart
+        eggsPerHour = eggsPerMinute * 60
+        
+        print('[BGS] Timer complete. Started:', countStart, 'Ended:', countEnd, 'Per min:', eggsPerMinute)
+        
+        RateLabel:Set(string.format("Rate: %d/min | %d/hr", eggsPerMinute, eggsPerHour))
+        
+        timerStarted = false
+    else
+        local currentCount = eggsOpenedValue.Value
+        local progressEggs = currentCount - countStart
+        local projectedMinute = progressEggs / (elapsed / 60)
+        RateLabel:Set(string.format("Progress: %d/%d | %.0f/min", progressEggs, 60 - math.floor(elapsed), projectedMinute))
     end
-    
-    while #statsWindow > 0 and currentTime - statsWindow[1].time > MAX_STATS_WINDOW do
-        table.remove(statsWindow, 1)
-    end
-    
-    local totalEggs = 0
-    local windowDuration = math.min(currentTime - lastUpdateTime, MAX_STATS_WINDOW)
-    
-    for _, entry in ipairs(statsWindow) do
-        totalEggs = totalEggs + entry.count
-    end
-    
-    if windowDuration > 0 and #statsWindow > 0 then
-        local oldestTime = statsWindow[1].time
-        local actualDuration = currentTime - oldestTime
-        if actualDuration > 0 then
-            eggsPerMinute = (totalEggs / actualDuration) * 60
-            eggsPerHour = (totalEggs / actualDuration) * 3600
-        end
-    elseif deltaTime > 5 then
-        eggsPerMinute = 0
-        eggsPerHour = 0
-    end
-    
-    lastEggsCount = currentCount
-    lastUpdateTime = currentTime
-    
-    StatsLabel:Set("Eggs Opened: " .. tostring(currentCount))
-    RateLabel:Set(string.format("Rate: %.0f/min | %.0f/hr", eggsPerMinute, eggsPerHour))
 end
 
 Tab:CreateDropdown({
@@ -133,6 +117,12 @@ Tab:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         autoHatchEnabled = Value
+        if Value then
+            startTimer()
+        else
+            timerStarted = false
+            RateLabel:Set("Rate: stopped")
+        end
         print('[BGS] Auto Hatch:', Value)
     end
 })
@@ -171,7 +161,8 @@ task.spawn(function()
         if autoHatchEnabled then
             hatchEgg()
         end
-        updateStats()
+        StatsLabel:Set("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
+        checkTimer()
         wait(0.5)
     end
 end)
