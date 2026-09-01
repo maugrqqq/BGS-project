@@ -133,7 +133,7 @@ local function getDailyInfo()
     local timeUntil = DailyRewardsModule:GetTimeUntilTomorrow()
     
     if current >= target then
-        return string.format('Quest: %s %d/%d | Next: %s', challengeType, math.min(current, target), target, formatTime(timeUntil))
+        return string.format('Done! Next in %s', formatTime(timeUntil))
     else
         return string.format('Quest: %s %d/%d', challengeType, current, target)
     end
