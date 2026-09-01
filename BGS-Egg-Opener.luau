@@ -1,189 +1,156 @@
+local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
+
 local RayfieldSrc = game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua')
 RayfieldSrc = RayfieldSrc:gsub('Settings%.ConfigurationSaving%.FileName = tostring%(game%.PlaceId%)', 'Settings.ConfigurationSaving.FileName = tostring(game.JobId)')
 local Rayfield = loadstring(RayfieldSrc)()
 
-local Window = Rayfield:CreateWindow({
-    Name = "BGS Egg Opener",
-    Icon = 4483362458,
-    LoadingTitle = "BGS Project",
-    LoadingSubtitle = "by maugrqqq",
-    Theme = "Default",
-    DisableRayfieldPrompts = true,
-    DisableBuildWarnings = true,
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = nil,
-        FileName = "BGS_Egg_Opener"
-    },
-    Discord = {
-        Enabled = false,
-        Invite = "",
-        RememberJoins = true
-    },
-    KeySystem = false
-})
+local CONFIG_FILE = 'BGS_Egg_Opener_Config.json'
+local HttpService = game:GetService('HttpService')
 
-local Tab = Window:CreateTab("Egg Opener", 4483362458)
+local function loadConfig()
+    local success, data = pcall(function()
+        if isfile(CONFIG_FILE) then return HttpService:JSONDecode(readfile(CONFIG_FILE)) end
+        return {}
+    end)
+    if success then return data end
+    return {}
+end
 
-local selectedEgg = "Hacker Egg"
-local autoHatchEnabled = false
-local tripleHatchEnabled = false
-local weekendEventEnabled = false
+local function saveConfig(cfg)
+    pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(cfg)) end)
+end
 
-local eggsFolder = game:GetService('Workspace'):FindFirstChild('Eggs')
+local config = loadConfig()
+
+task.spawn(function()
+    local CoreGui = game:GetService('CoreGui')
+    while true do
+        pcall(function()
+            for _, name in ipairs({'RobloxPromptGui', 'PurchasePromptApp', 'BulkPurchaseApp', 'CommercePurchaseApp'}) do
+                local obj = CoreGui:FindFirstChild(name)
+                if obj then obj:Destroy() end
+            end
+        end)
+        wait(0.2)
+    end
+end)
+
+local Window = Rayfield:CreateWindow({Name='BGS Egg Opener', Icon=4483362458, LoadingTitle='BGS Project', LoadingSubtitle='by maugrqqq', Theme='Default', DisableRayfieldPrompts=true, DisableBuildWarnings=true, ConfigurationSaving={Enabled=true, FolderName=nil, FileName='BGS_Egg_Opener'}, Discord={Enabled=false, Invite='', RememberJoins=true}, KeySystem=false})
+local MainTab = Window:CreateTab('Main', 4483362458)
+local EventTab = Window:CreateTab('Events', 4483362458)
+local WebhookTab = Window:CreateTab('Webhook', 4483362458)
+
+local selectedEgg = config.selectedEgg or 'Hacker Egg'
+local autoHatchEnabled = config.autoHatchEnabled or false
+local tripleHatchEnabled = config.tripleHatchEnabled or false
+local webhookEnabled = config.webhookEnabled or false
+local webhookURL = config.webhookURL or ''
+local eventsEnabled = config.eventsEnabled or false
+
+local LocalPlayer = game.Players.LocalPlayer
+local Workspace = game:GetService('Workspace')
+local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
+local RunService = game:GetService('RunService')
+
+local eggsFolder = Workspace:FindFirstChild('Eggs')
 local eggList = {}
-
 if eggsFolder then
     for _, child in ipairs(eggsFolder:GetChildren()) do
-        if child:IsA('Model') and child.Name:find('Egg') then
-            table.insert(eggList, child.Name)
-        end
+        if child:IsA('Model') and child.Name:find('Egg') then table.insert(eggList, child.Name) end
     end
 end
-
 table.sort(eggList)
+if #eggList == 0 then eggList = {'Common Egg', 'Spotted Egg', 'Hacker Egg'} end
 
-if #eggList == 0 then
-    eggList = {"Common Egg", "Spotted Egg", "Hacker Egg", "Alien Egg", "Space Crystal Egg"}
+local function getCharacter()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
 
-local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
-local leaderstats = game.Players.LocalPlayer:WaitForChild('leaderstats')
-local eggsOpenedValue = leaderstats:WaitForChild('Eggs Opened')
+local function getEggPosition()
+    local eggModel = eggsFolder and eggsFolder:FindFirstChild(selectedEgg)
+    if not eggModel then return nil end
+    local primary = eggModel.PrimaryPart or eggModel:FindFirstChildWhichIsA('BasePart')
+    if not primary then return nil end
+    return primary.Position
+end
 
-local StatsLabel = Tab:CreateLabel("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
-local RateLabel = Tab:CreateLabel("Rate: calculating...")
+local teleportLoop = nil
 
-local countStart = 0
-local countEnd = 0
-local timerStarted = false
-local timerStartTime = 0
-local eggsPerMinute = 0
-local eggsPerHour = 0
+local function startTeleportLoop()
+    if teleportLoop then return end
+    teleportLoop = RunService.RenderStepped:Connect(function()
+        local char = getCharacter()
+        local root = char:FindFirstChild('HumanoidRootPart')
+        if not root then return end
+        local eggPos = getEggPosition()
+        if eggPos then
+            root.CFrame = CFrame.new(eggPos + Vector3.new(0, 10, 0))
+        end
+    end)
+end
+
+local function stopTeleportLoop()
+    if teleportLoop then teleportLoop:Disconnect() teleportLoop = nil end
+end
 
 local function hatchEgg()
-    local success, err = pcall(function()
-        Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled)
-    end)
-    if not success then
-        print('[BGS] Error:', err)
-    end
+    pcall(function() Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled) end)
 end
 
-local function startTimer()
-    countStart = eggsOpenedValue.Value
-    timerStarted = true
-    timerStartTime = os.clock()
-    print('[BGS] Timer started at:', countStart)
-end
-
-local function checkTimer()
-    if not timerStarted then return end
-    
-    local elapsed = os.clock() - timerStartTime
-    
-    if elapsed >= 60 then
-        countEnd = eggsOpenedValue.Value
-        eggsPerMinute = countEnd - countStart
-        eggsPerHour = eggsPerMinute * 60
-        
-        print('[BGS] Timer complete. Started:', countStart, 'Ended:', countEnd, 'Per min:', eggsPerMinute)
-        
-        RateLabel:Set(string.format("Rate: %d/min | %d/hr", eggsPerMinute, eggsPerHour))
-        
-        timerStarted = false
-    else
-        local currentCount = eggsOpenedValue.Value
-        local progressEggs = currentCount - countStart
-        local remainingTime = 60 - elapsed
-        RateLabel:Set(string.format("Progress: %d eggs | %.0fs left | %.0f/min", progressEggs, remainingTime, progressEggs / (elapsed / 60)))
-    end
-end
-
-local function enableWeekendEvents()
+local function enableEvents()
     local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
-    WeekendEventSchedule.IsActive = function(self, p1, p2) return true end
-    
-    local Is2xShinyModule = require(game.ReplicatedStorage.Assets.Modules.Is2xShinyEnabled)
-    local Is2xMythicModule = require(game.ReplicatedStorage.Assets.Modules.Is2xMythicEnabled)
-    
-    pcall(function() debug.setupvalue(Is2xShinyModule, 1, true) end)
-    pcall(function() debug.setupvalue(Is2xMythicModule, 1, true) end)
+    WeekendEventSchedule.IsActive = function() return true end
+    local Is2xShiny = require(game.ReplicatedStorage.Assets.Modules.Is2xShinyEnabled)
+    local Is2xMythic = require(game.ReplicatedStorage.Assets.Modules.Is2xMythicEnabled)
+    pcall(function() debug.setupvalue(Is2xShiny, 1, true) end)
+    pcall(function() debug.setupvalue(Is2xMythic, 1, true) end)
 end
 
-local function disableWeekendEvents()
+local function disableEvents()
     local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
-    WeekendEventSchedule.IsActive = function(self, p1, p2) return false end
-    
-    local Is2xShinyModule = require(game.ReplicatedStorage.Assets.Modules.Is2xShinyEnabled)
-    local Is2xMythicModule = require(game.ReplicatedStorage.Assets.Modules.Is2xMythicEnabled)
-    
-    pcall(function() debug.setupvalue(Is2xShinyModule, 1, false) end)
-    pcall(function() debug.setupvalue(Is2xMythicModule, 1, false) end)
+    WeekendEventSchedule.IsActive = function() return false end
+    local Is2xShiny = require(game.ReplicatedStorage.Assets.Modules.Is2xShinyEnabled)
+    local Is2xMythic = require(game.ReplicatedStorage.Assets.Modules.Is2xMythicEnabled)
+    pcall(function() debug.setupvalue(Is2xShiny, 1, false) end)
+    pcall(function() debug.setupvalue(Is2xMythic, 1, false) end)
 end
 
-Tab:CreateDropdown({
-    Name = "Select Egg",
-    Options = eggList,
-    CurrentOption = {"Hacker Egg"},
-    Callback = function(OptionTable)
-        if type(OptionTable) == 'table' and #OptionTable > 0 then
-            selectedEgg = OptionTable[1]
-            print('[BGS] Selected:', selectedEgg)
+local function sendWebhook(message)
+    if not webhookEnabled or webhookURL == '' then return end
+    pcall(function() HttpService:PostAsync(webhookURL, HttpService:JSONEncode({content = message})) end)
+end
+
+local function saveCurrent()
+    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled, webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled})
+end
+
+NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
+    if eventName == 'DisplayLegendaryInChat' then
+        local args = {...}
+        if webhookEnabled and webhookURL ~= '' then
+            sendWebhook(args[1] .. ' hatched a Legendary ' .. args[2])
         end
     end
-})
+end)
 
-Tab:CreateToggle({
-    Name = "Open Selected Egg",
-    CurrentValue = false,
-    Callback = function(Value)
-        autoHatchEnabled = Value
-        if Value then
-            startTimer()
-        else
-            timerStarted = false
-            RateLabel:Set("Rate: stopped")
-        end
-        print('[BGS] Auto Hatch:', Value)
-    end
-})
+MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
+MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt) selectedEgg = opt[1] saveCurrent() end})
+MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, Callback=function(v) autoHatchEnabled = v if v then startTeleportLoop() else stopTeleportLoop() end saveCurrent() end})
+MainTab:CreateToggle({Name='Triple Hatch', CurrentValue=tripleHatchEnabled, Callback=function(v) tripleHatchEnabled = v saveCurrent() end})
 
-Tab:CreateToggle({
-    Name = "Triple Hatch",
-    CurrentValue = false,
-    Callback = function(Value)
-        tripleHatchEnabled = Value
-        print('[BGS] Triple Hatch:', Value)
-    end
-})
+EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
+EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
 
-Tab:CreateParagraph({
-    Title = "Events",
-    Content = "Activate 2x Speed, 2x Luck, 2x Shiny, 2x Mythic"
-})
+WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets to Discord'})
+WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Callback=function(v) webhookEnabled = v saveCurrent() end})
+WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 
-Tab:CreateToggle({
-    Name = "Enable All Events",
-    CurrentValue = false,
-    Callback = function(Value)
-        weekendEventEnabled = Value
-        if Value then
-            enableWeekendEvents()
-        else
-            disableWeekendEvents()
-        end
-        print('[BGS] All Events:', Value)
-    end
-})
+if autoHatchEnabled then startTeleportLoop() end
+if eventsEnabled then enableEvents() end
 
 task.spawn(function()
     while true do
-        if autoHatchEnabled then
-            hatchEgg()
-        end
-        StatsLabel:Set("Eggs Opened: " .. tostring(eggsOpenedValue.Value))
-        checkTimer()
-        wait(0.1)
+        if autoHatchEnabled then hatchEgg() end
+        wait(0.5)
     end
 end)
