@@ -44,29 +44,17 @@ end
 table.sort(eggList)
 
 if #eggList == 0 then
-    eggList = {
-        "Common Egg",
-        "Spotted Egg",
-        "Ice Shard Egg",
-        "Hacker Egg",
-        "Alien Egg",
-        "Space Crystal Egg"
-    }
+    eggList = {"Common Egg", "Spotted Egg", "Hacker Egg", "Alien Egg", "Space Crystal Egg"}
 end
 
-local EggService = require(game.ReplicatedStorage.Assets.Modules.EggService)
-local LocalPlayer = game.Players.LocalPlayer
-local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
+local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 
-local oldIsActive = WeekendEventSchedule.IsActive
-
-local function updateWeekendEvent()
-    if weekendEventEnabled then
-        WeekendEventSchedule.IsActive = function(self, p1, p2)
-            return true
-        end
-    else
-        WeekendEventSchedule.IsActive = oldIsActive
+local function hatchEgg()
+    local success, err = pcall(function()
+        Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled)
+    end)
+    if not success then
+        print('[BGS] Error:', err)
     end
 end
 
@@ -76,6 +64,7 @@ Tab:CreateDropdown({
     CurrentOption = {"Spotted Egg"},
     Callback = function(Option)
         selectedEgg = Option
+        print('[BGS] Selected:', Option)
     end
 })
 
@@ -84,7 +73,7 @@ Tab:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         autoHatchEnabled = Value
-        print("[BGS] Auto Hatch:", Value)
+        print('[BGS] Auto Hatch:', Value)
     end
 })
 
@@ -93,13 +82,13 @@ Tab:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         tripleHatchEnabled = Value
-        print("[BGS] Triple Hatch:", Value)
+        print('[BGS] Triple Hatch:', Value)
     end
 })
 
 Tab:CreateParagraph({
     Title = "Events",
-    Content = "Activate weekend events (2x Speed, 2x Luck, etc.)"
+    Content = "Activate weekend events"
 })
 
 Tab:CreateToggle({
@@ -107,23 +96,20 @@ Tab:CreateToggle({
     CurrentValue = false,
     Callback = function(Value)
         weekendEventEnabled = Value
-        updateWeekendEvent()
-        print("[BGS] Weekend Event:", Value)
+        local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
+        if Value then
+            WeekendEventSchedule.IsActive = function(self, p1, p2) return true end
+        else
+            WeekendEventSchedule.IsActive = function(self, p1, p2) return false end
+        end
+        print('[BGS] Weekend Event:', Value)
     end
 })
 
 task.spawn(function()
-    local RemoteEvent = game:GetService("ReplicatedStorage"):FindFirstChild("NetworkRemoteEvent")
     while true do
-        if autoHatchEnabled and RemoteEvent then
-            local success, err = pcall(function()
-                RemoteEvent:FireServer("PurchaseEgg", selectedEgg, tripleHatchEnabled)
-            end)
-            if not success then
-                print("[BGS] Error:", err)
-            else
-                print("[BGS] Hatched:", selectedEgg, "Triple:", tripleHatchEnabled)
-            end
+        if autoHatchEnabled then
+            hatchEgg()
         end
         wait(0.5)
     end
