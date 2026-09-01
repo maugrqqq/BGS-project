@@ -8,8 +8,8 @@ local Window = Rayfield:CreateWindow({
     LoadingTitle = "BGS Project",
     LoadingSubtitle = "by maugrqqq",
     Theme = "Default",
-    DisableRayfieldPrompts = false,
-    DisableBuildWarnings = false,
+    DisableRayfieldPrompts = true,
+    DisableBuildWarnings = true,
     ConfigurationSaving = {
         Enabled = true,
         FolderName = nil,
@@ -100,8 +100,10 @@ Tab:CreateDropdown({
     Options = eggList,
     CurrentOption = {"Hacker Egg"},
     Callback = function(OptionTable)
-        selectedEgg = OptionTable[1]
-        print('[BGS] Selected:', selectedEgg)
+        if type(OptionTable) == 'table' and #OptionTable > 0 then
+            selectedEgg = OptionTable[1]
+            print('[BGS] Selected:', selectedEgg)
+        end
     end
 })
 
