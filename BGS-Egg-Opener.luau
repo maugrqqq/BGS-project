@@ -55,6 +55,8 @@ local LocalPlayer = game.Players.LocalPlayer
 local Workspace = game:GetService('Workspace')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 local RunService = game:GetService('RunService')
+local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
+local GuiService = Services:GetService('GuiService')
 
 local eggsFolder = Workspace:FindFirstChild('Eggs')
 local eggList = {}
@@ -108,6 +110,10 @@ local function formatTime(seconds)
 end
 
 local function getGroupInfo()
+    if GuiService and GuiService.ShowGroupBenefits then
+        pcall(function() GuiService:ShowGroupBenefits() end)
+    end
+    
     local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
     if not ScreenGui then return '...' end
     
@@ -124,6 +130,7 @@ local function getGroupInfo()
             end
         end
     end
+    
     return 'Ready'
 end
 
@@ -143,15 +150,12 @@ local function getDailyInfo()
                 if d.Name == 'Category' and d.Text ~= '' then category = d.Text end
                 if d.Text:find('%d+ %/ %d+') then progress = d.Text end
                 if d.Name == 'NextRewardIn' then nextReward = d.Text end
-                if d.Name == 'Amount' and (d.Text == 'Claimed reward!' or d.Text == 'Claim reward') then
-                    claimed = (d.Text == 'Claimed reward!')
-                end
+                if d.Text == 'Claimed reward!' then claimed = true end
             end
         end
         
         if claimed and nextReward ~= '' then
-            local timeText = nextReward:gsub('Next reward in ', '')
-            return 'Done! Next in ' .. timeText
+            return 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
         elseif category ~= '' and progress ~= '' then
             return category .. ' [' .. progress .. ']'
         elseif category ~= '' then
