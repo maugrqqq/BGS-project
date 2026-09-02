@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v12
--- Телепорт: On Hatching (сразу) / Hatching Stalled (по таймауту)
+-- BGS Egg Opener - Fixed v14
+-- Исправлено: Eggs Opened вместо Egg Hatches, UI переупорядочен
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -55,10 +55,10 @@ local TasksTab = Window:CreateTab('Tasks', 4483362458)
 
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
 local autoHatchEnabled = config.autoHatchEnabled or false
+local tripleHatchEnabled = config.tripleHatchEnabled or false
 local teleportEnabled = config.teleportEnabled or false
 local teleportMode = config.teleportMode or 'On Hatching'
 local teleportTimeout = config.teleportTimeout or 5
-local tripleHatchEnabled = config.tripleHatchEnabled or false
 local webhookEnabled = config.webhookEnabled or false
 local webhookURL = config.webhookURL or ''
 local eventsEnabled = config.eventsEnabled or false
@@ -108,12 +108,12 @@ local function teleportToSelectedEgg()
     end
 end
 
-local function getEggHatches()
+local function getEggsOpened()
     local leaderstats = LocalPlayer:FindFirstChild('leaderstats')
     if leaderstats then
-        local hatches = leaderstats:FindFirstChild('Egg Hatches')
-        if hatches and hatches:IsA('IntValue') then
-            return hatches.Value
+        local eggsOpened = leaderstats:FindFirstChild('Eggs Opened')
+        if eggsOpened and eggsOpened:IsA('IntValue') then
+            return eggsOpened.Value
         end
     end
     return -1
@@ -257,7 +257,8 @@ local function sendWebhook(message)
     pcall(function() HttpService:PostAsync(webhookURL, HttpService:JSONEncode({content = message})) end)
 end
 local function saveCurrent()
-    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout, tripleHatchEnabled=tripleHatchEnabled,
+    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
+        teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards})
 end
@@ -272,34 +273,35 @@ end)
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
 MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt)
     selectedEgg = opt[1]
-    if teleportEnabled then
-        teleportToSelectedEgg()
-    end
+    if teleportEnabled then teleportToSelectedEgg() end
     saveCurrent()
 end})
 MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, Callback=function(v)
     autoHatchEnabled = v
-    if v and teleportEnabled and teleportMode == 'On Hatching' then
-        teleportToSelectedEgg()
-    end
+    if v and teleportEnabled and teleportMode == 'On Hatching' then teleportToSelectedEgg() end
     saveCurrent()
 end})
+MainTab:CreateToggle({Name='Triple Hatch', CurrentValue=tripleHatchEnabled, Callback=function(v) tripleHatchEnabled = v saveCurrent() end})
+MainTab:CreateDivider()
 MainTab:CreateToggle({Name='Teleport To Egg', CurrentValue=teleportEnabled, Callback=function(v)
     teleportEnabled = v
-    if v then
-        teleportToSelectedEgg()
-    end
+    if v then teleportToSelectedEgg() end
     saveCurrent()
 end})
 MainTab:CreateDropdown({Name='When To Teleport', Options={'On Hatching', 'Hatching Stalled'}, CurrentOption={teleportMode}, Callback=function(opt)
     teleportMode = opt[1]
     saveCurrent()
 end})
-MainTab:CreateSlider({Name='Timeout (seconds)', Range={1, 30}, Increment=1, CurrentValue={teleportTimeout}, Callback=function(v)
-    teleportTimeout = v
-    saveCurrent()
-end})
-MainTab:CreateToggle({Name='Triple Hatch', CurrentValue=tripleHatchEnabled, Callback=function(v) tripleHatchEnabled = v saveCurrent() end})
+MainTab:CreateSlider({
+    Name = 'Timeout (seconds)',
+    Range = {1, 30},
+    Increment = 1,
+    CurrentValue = teleportTimeout,
+    Callback = function(v)
+        teleportTimeout = v
+        saveCurrent()
+    end
+})
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
 WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets to Discord'})
@@ -369,7 +371,7 @@ if autoDailyRewards then
     task.spawn(function() dailyText = readDailyText() lastDailyRefresh = os.clock() safeSet(DailyLabel, dailyText) end)
 end
 
-local lastHatches = -1
+local lastEggsOpened = -1
 local stalledTime = 0
 
 local lastTick = os.clock()
@@ -381,19 +383,19 @@ while true do
 
     -- Hatching Stalled логика
     if autoHatchEnabled and teleportEnabled and teleportMode == 'Hatching Stalled' then
-        local currentHatches = getEggHatches()
-        if lastHatches == -1 then
-            lastHatches = currentHatches
+        local currentEggsOpened = getEggsOpened()
+        if lastEggsOpened == -1 then
+            lastEggsOpened = currentEggsOpened
             stalledTime = now
-        elseif currentHatches ~= lastHatches then
-            lastHatches = currentHatches
+        elseif currentEggsOpened ~= lastEggsOpened then
+            lastEggsOpened = currentEggsOpened
             stalledTime = now
         elseif now - stalledTime >= teleportTimeout then
             teleportToSelectedEgg()
             stalledTime = now
         end
-    elseif not autoHatchEnabled or not teleportEnabled then
-        lastHatches = -1
+    elseif not autoHatchEnabled or not teleportEnabled or teleportMode ~= 'Hatching Stalled' then
+        lastEggsOpened = -1
     end
 
     -- Искусственный таймер для group
