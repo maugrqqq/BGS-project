@@ -113,6 +113,15 @@ local function formatTime(seconds)
     return string.format('%dm %ds', mins, secs)
 end
 
+local function hideGroupFrames()
+    local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
+    if not ScreenGui then return end
+    local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
+    if problemFrame then problemFrame.Visible = false end
+    local rewardFrame = ScreenGui:FindFirstChild('GroupBenefitsReward')
+    if rewardFrame then rewardFrame.Visible = false end
+end
+
 local function refreshGroupTimer()
     if GuiService and GuiService.ShowGroupBenefits then
         pcall(function() GuiService:ShowGroupBenefits() end)
@@ -132,11 +141,13 @@ local function refreshGroupTimer()
                 local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
                 groupTimerSeconds = total
                 groupLastRefresh = os.clock()
+                hideGroupFrames()
                 return total
             end
         end
     end
     
+    hideGroupFrames()
     return 0
 end
 
