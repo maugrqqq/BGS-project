@@ -343,6 +343,14 @@ local function sendWebhookMessage(cleanMsg, petName, chance, chatColor)
     end)
 end
 
+local function saveCurrent()
+    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
+        teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
+        webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
+        autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
+        autoAlienSpinToWin=autoAlienSpinToWin})
+end
+
 NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
     if eventName == 'DisplayLegendaryInChat' then
         local args = {...}
