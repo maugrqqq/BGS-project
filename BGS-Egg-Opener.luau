@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v16
--- Исправлен порядок создания AlienSpinLabel (до тумблера) + защита safeSet от nil
+-- BGS Egg Opener - Fixed v17
+-- AlienSpinToWin: открывает меню и читает TimeRemaining как Group Benefits/SpinToWin
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -216,13 +216,32 @@ local function readSpinSeconds()
 end
 
 local function readAlienSpinSeconds()
-    local alienSpin = ScreenGui:FindFirstChild('AlienSpinToWin')
-    if not alienSpin then return -1 end
-    local timeRemaining = alienSpin:FindFirstChild('TimeRemaining', true)
-    if timeRemaining and timeRemaining:IsA('TextLabel') then
-        if not timeRemaining.Visible then return 0 end
-        return parseTimeFromText(timeRemaining.Text)
-    end
+    local deadline = os.clock() + 8
+    repeat
+        pcall(function()
+            if GuiService.UpdateAlienSpinToWin then
+                GuiService:UpdateAlienSpinToWin()
+            end
+            GuiService:DisplayFrame('AlienSpinToWin')
+        end)
+        wait(0.4)
+        local alienSpin = ScreenGui:FindFirstChild('AlienSpinToWin')
+        if alienSpin then
+            local timeRemaining = alienSpin:FindFirstChild('TimeRemaining', true)
+            if timeRemaining and timeRemaining:IsA('TextLabel') then
+                if not timeRemaining.Visible then
+                    pcall(function() GuiService:DisplayFrame('') end)
+                    return 0
+                end
+                local seconds = parseTimeFromText(timeRemaining.Text)
+                if seconds >= 0 then
+                    pcall(function() GuiService:DisplayFrame('') end)
+                    return seconds
+                end
+            end
+        end
+    until os.clock() >= deadline
+    pcall(function() GuiService:DisplayFrame('') end)
     return -1
 end
 
@@ -352,7 +371,6 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
 
--- Создаём AlienSpinLabel ДО тумблера
 local AlienSpinLabel = TasksTab:CreateLabel('Off')
 
 TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpinToWin, Callback=function(v)
