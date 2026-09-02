@@ -293,22 +293,66 @@ local function disableEvents()
     pcall(function() debug.setupvalue(Is2xShiny, 1, false) end)
     pcall(function() debug.setupvalue(Is2xMythic, 1, false) end)
 end
-local function sendWebhook(message)
-    if not webhookEnabled or webhookURL == '' then return end
-    pcall(function() HttpService:PostAsync(webhookURL, HttpService:JSONEncode({content = message})) end)
+
+local petImageUrls = {
+    ["Hacker Phoenix"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/6/69/Hacker_Phoenix.png/revision/latest?cb=20260829182629",
+    ["Hacker Gem"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/9/91/Hacker_Gem.png/revision/latest?cb=20260829172252",
+    ["D0GGY1337"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/d/d4/D0GGY1337.png/revision/latest?cb=20260829185938",
+    ["Hackarium"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/d/d6/Hackarium.png/revision/latest?cb=20260829172458",
+    ["5H0CK"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/0/06/5H0CK.png/revision/latest?cb=20260829182537",
+    ["Galactic Wolflord"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/0/0c/Galactic_Wolflord.png/revision/latest?cb=20260829172444",
+    ["Mechanical Robot"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/3/3b/Mechanical_Robot.png/revision/latest?cb=20260829172548"
+}
+
+local function parseChatColor(text)
+    local color = tostring(text or ""):match("<font%s+[^>]*color%s*=%s*[\"']#([%x][%x][%x][%x][%x][%x])[\"'][^>]*>")
+    if not color then
+        local red, green, blue = tostring(text or ""):match("<font%s+[^>]*color%s*=%s*[\"']rgb%((%d+)%s*,%s*(%d+)%s*,%s*(%d+)%)[\"'][^>]*>")
+        if red and green and blue then
+            return tonumber(red) * 65536 + tonumber(green) * 256 + tonumber(blue)
+        end
+    end
+    if not color then return nil end
+    return tonumber(color:sub(1, 2), 16) * 65536 + tonumber(color:sub(3, 4), 16) * 256 + tonumber(color:sub(5, 6), 16)
 end
-local function saveCurrent()
-    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
-        teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
-        webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
-        autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
-        autoAlienSpinToWin=autoAlienSpinToWin})
+
+local function sendWebhookMessage(cleanMsg, petName, chance, chatColor)
+    if not webhookEnabled or webhookURL == '' then return end
+    local proxyUrl = webhookURL:gsub('https://discord%.com/api/webhooks/', 'https://webhook.lewisakura.moe/api/webhooks/')
+    proxyUrl = proxyUrl:gsub('https://discordapp%.com/api/webhooks/', 'https://webhook.lewisakura.moe/api/webhooks/')
+    local embed = {
+        description = cleanMsg,
+        color = chatColor or 65535
+    }
+    if petName and petName ~= '' then
+        local img = petImageUrls[petName]
+        if img then
+            embed.author = { name = chance or petName, icon_url = img }
+        end
+    end
+    local payload = HttpService:JSONEncode({ embeds = { embed } })
+    pcall(function()
+        if syn and syn.request then
+            syn.request({ Url = proxyUrl, Method = 'POST', Headers = { ['Content-Type'] = 'application/json' }, Body = payload })
+        elseif request then
+            request({ Url = proxyUrl, Method = 'POST', Headers = { ['Content-Type'] = 'application/json' }, Body = payload })
+        else
+            HttpService:PostAsync(proxyUrl, payload)
+        end
+    end)
 end
 
 NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
     if eventName == 'DisplayLegendaryInChat' then
         local args = {...}
-        if webhookEnabled and webhookURL ~= '' then sendWebhook(args[1] .. ' hatched a Legendary ' .. args[2]) end
+        if webhookEnabled and webhookURL ~= '' then
+            local msg = args[1] .. ' hatched a Legendary ' .. args[2]
+            local cleanMsg = msg:gsub('<[^>]+>', '')
+            local chatColor = parseChatColor(msg)
+            local petName = args[2] or ''
+            local chance = cleanMsg:match('%(([^%)]+)%)') or ''
+            sendWebhookMessage(cleanMsg, petName, chance, chatColor)
+        end
     end
 end)
 
