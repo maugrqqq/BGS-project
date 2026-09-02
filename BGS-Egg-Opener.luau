@@ -1,9 +1,25 @@
+-- BGS Egg Opener - Fixed
+-- Исправление: защита от ошибки 'The current thread cannot access Instance'
+
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
 local GuiService = Services:GetService('GuiService')
 local ScreenGui = game.Players.LocalPlayer.PlayerGui:WaitForChild('ScreenGui', 10)
 local HttpService = game:GetService('HttpService')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
+
+-- Безопасная обёртка для label:Set
+local function safeSet(label, text)
+    local ok, err = pcall(function()
+        label:Set(text)
+    end)
+    if not ok then
+        task.spawn(function()
+            task.wait(0.05)
+            pcall(function() label:Set(text) end)
+        end)
+    end
+end
 
 -- Удаляем старые Rayfield GUI
 pcall(function()
@@ -244,8 +260,8 @@ groupSeconds = readGroupSeconds()
 lastGroupRefresh = os.clock()
 dailyText = readDailyText()
 lastDailyRefresh = os.clock()
-GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
-DailyLabel:Set(dailyText)
+safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+safeSet(DailyLabel, dailyText)
 
 local lastTick = os.clock()
 while true do
@@ -257,27 +273,27 @@ while true do
     if groupSeconds > 0 then
         groupSeconds = math.max(0, groupSeconds - delta)
         if groupSeconds <= 0 then
-            GroupLabel:Set('Ready')
+            safeSet(GroupLabel, 'Ready')
             if autoGroupBenefits then collectGroupReward() end
         else
-            GroupLabel:Set(formatTime(groupSeconds))
+            safeSet(GroupLabel, formatTime(groupSeconds))
         end
     elseif groupSeconds == 0 then
-        GroupLabel:Set('Ready')
+        safeSet(GroupLabel, 'Ready')
     else
-        GroupLabel:Set('Loading...')
+        safeSet(GroupLabel, 'Loading...')
     end
 
     if now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then
         groupSeconds = readGroupSeconds()
         lastGroupRefresh = now
-        if groupSeconds > 0 then GroupLabel:Set(formatTime(groupSeconds)) end
+        if groupSeconds > 0 then safeSet(GroupLabel, formatTime(groupSeconds)) end
     end
 
     if now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then
         dailyText = readDailyText()
         lastDailyRefresh = now
-        DailyLabel:Set(dailyText)
+        safeSet(DailyLabel, dailyText)
     end
 
     if autoDailyRewards and canClaimDaily() then
