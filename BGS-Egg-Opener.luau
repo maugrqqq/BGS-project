@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v10
--- Телепорт: 1 секунда затем стоп. Синхронизация: раз в 90 секунд
+-- BGS Egg Opener - Fixed v12
+-- Телепорт: On Hatching (сразу) / Hatching Stalled (по таймауту)
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -8,27 +8,16 @@ local ScreenGui = game.Players.LocalPlayer.PlayerGui:WaitForChild('ScreenGui', 1
 local HttpService = game:GetService('HttpService')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 
--- Безопасная обёртка для label:Set
 local function safeSet(label, text)
-    local ok, err = pcall(function()
-        label:Set(text)
-    end)
+    local ok, err = pcall(function() label:Set(text) end)
     if not ok then
-        task.spawn(function()
-            task.wait(0.05)
-            pcall(function() label:Set(text) end)
-        end)
+        task.spawn(function() task.wait(0.05) pcall(function() label:Set(text) end) end)
     end
 end
 
--- Удаляем старые Rayfield GUI
 pcall(function()
-    if gethui then
-        local old = gethui():FindFirstChild('Rayfield')
-        if old then old:Destroy() end
-    end
-    local coreOld = game:GetService('CoreGui'):FindFirstChild('Rayfield')
-    if coreOld then coreOld:Destroy() end
+    if gethui then local old = gethui():FindFirstChild('Rayfield') if old then old:Destroy() end end
+    local coreOld = game:GetService('CoreGui'):FindFirstChild('Rayfield') if coreOld then coreOld:Destroy() end
 end)
 
 local RayfieldSrc = game:HttpGet('https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source.lua')
@@ -43,7 +32,6 @@ end
 local function saveConfig(cfg) pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(cfg)) end) end
 local config = loadConfig()
 
--- Автоматическое уничтожение всплывающих окон Roblox
 local CoreGui = game:GetService('CoreGui')
 local function autoDestroyRobloxPrompts()
     pcall(function()
@@ -68,6 +56,8 @@ local TasksTab = Window:CreateTab('Tasks', 4483362458)
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
 local autoHatchEnabled = config.autoHatchEnabled or false
 local teleportEnabled = config.teleportEnabled or false
+local teleportMode = config.teleportMode or 'On Hatching'
+local teleportTimeout = config.teleportTimeout or 5
 local tripleHatchEnabled = config.tripleHatchEnabled or false
 local webhookEnabled = config.webhookEnabled or false
 local webhookURL = config.webhookURL or ''
@@ -97,7 +87,7 @@ local spinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local lastSpinRefresh = 0
-local SYNC_INTERVAL = 90 -- 1.5 минуты
+local SYNC_INTERVAL = 90
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
@@ -108,21 +98,25 @@ local function getEggPosition()
     return primary.Position
 end
 
--- Телепорт: один раз на 1 секунду, затем остановка
-local teleportLoop = nil
-local function teleportOnce()
+local function teleportToSelectedEgg()
+    local eggPos = getEggPosition()
+    if not eggPos then return end
     local char = getCharacter()
     local root = char:FindFirstChild('HumanoidRootPart')
-    if not root then return end
-    local eggPos = getEggPosition()
-    if eggPos then
+    if root then
         root.CFrame = CFrame.new(eggPos + Vector3.new(0, 10, 0))
     end
 end
-local function startTeleportOnce()
-    teleportOnce()
-    wait(1)
-    teleportOnce()
+
+local function getEggHatches()
+    local leaderstats = LocalPlayer:FindFirstChild('leaderstats')
+    if leaderstats then
+        local hatches = leaderstats:FindFirstChild('Egg Hatches')
+        if hatches and hatches:IsA('IntValue') then
+            return hatches.Value
+        end
+    end
+    return -1
 end
 
 local function hatchEgg() pcall(function() Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled) end) end
@@ -132,7 +126,6 @@ local function formatTime(seconds)
     return string.format('%dm %ds', m, s)
 end
 
--- Парсинг времени из текста
 local function parseTimeFromText(text)
     if not text then return -1 end
     for hours, mins, secs in text:gmatch('(%d+)h%s*(%d+)m%s*(%d+)s') do
@@ -144,7 +137,6 @@ local function parseTimeFromText(text)
     return -1
 end
 
--- Чтение Group Benefits
 local function readGroupSeconds()
     local deadline = os.clock() + 8
     repeat
@@ -170,7 +162,6 @@ local function readGroupSeconds()
     return -1
 end
 
--- Чтение Daily Rewards
 local function readDailyText()
     local deadline = os.clock() + 8
     repeat
@@ -207,21 +198,16 @@ local function readDailyText()
     return '...'
 end
 
--- Чтение Spin To Win
 local function readSpinSeconds()
     local GetHalfDay = function() return math.floor(os.time() / 43200) end
     local secondsLeft = (GetHalfDay() + 1) * 43200 - os.time()
-    
     local spinToWin = ScreenGui:FindFirstChild('SpinToWinSpooky')
     if spinToWin then
         local timeRemaining = spinToWin:FindFirstChild('TimeRemaining', true)
         if timeRemaining and timeRemaining:IsA('TextLabel') then
-            if not timeRemaining.Visible then
-                return 0
-            end
+            if not timeRemaining.Visible then return 0 end
         end
     end
-    
     return math.max(0, secondsLeft)
 end
 
@@ -271,7 +257,7 @@ local function sendWebhook(message)
     pcall(function() HttpService:PostAsync(webhookURL, HttpService:JSONEncode({content = message})) end)
 end
 local function saveCurrent()
-    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, teleportEnabled=teleportEnabled, tripleHatchEnabled=tripleHatchEnabled,
+    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout, tripleHatchEnabled=tripleHatchEnabled,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards})
 end
@@ -284,15 +270,33 @@ NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
 end)
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
-MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt) selectedEgg = opt[1] saveCurrent() end})
-MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, Callback=function(v) autoHatchEnabled = v saveCurrent() end})
+MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt)
+    selectedEgg = opt[1]
+    if teleportEnabled then
+        teleportToSelectedEgg()
+    end
+    saveCurrent()
+end})
+MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, Callback=function(v)
+    autoHatchEnabled = v
+    if v and teleportEnabled and teleportMode == 'On Hatching' then
+        teleportToSelectedEgg()
+    end
+    saveCurrent()
+end})
 MainTab:CreateToggle({Name='Teleport To Egg', CurrentValue=teleportEnabled, Callback=function(v)
     teleportEnabled = v
     if v then
-        task.spawn(function()
-            startTeleportOnce()
-        end)
+        teleportToSelectedEgg()
     end
+    saveCurrent()
+end})
+MainTab:CreateDropdown({Name='When To Teleport', Options={'On Hatching', 'Hatching Stalled'}, CurrentOption={teleportMode}, Callback=function(opt)
+    teleportMode = opt[1]
+    saveCurrent()
+end})
+MainTab:CreateSlider({Name='Timeout (seconds)', Range={1, 30}, Increment=1, CurrentValue={teleportTimeout}, Callback=function(v)
+    teleportTimeout = v
     saveCurrent()
 end})
 MainTab:CreateToggle({Name='Triple Hatch', CurrentValue=tripleHatchEnabled, Callback=function(v) tripleHatchEnabled = v saveCurrent() end})
@@ -305,111 +309,68 @@ TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
 
 -- Auto Group Benefits
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v)
-    autoGroupBenefits = v
-    saveCurrent()
+    autoGroupBenefits = v saveCurrent()
     if v then
         safeSet(GroupLabel, 'Loading...')
         task.spawn(function()
-            groupSeconds = readGroupSeconds()
-            lastGroupRefresh = os.clock()
-            if groupSeconds > 0 then
-                safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
-            elseif groupSeconds == 0 then
-                safeSet(GroupLabel, 'Ready')
-            else
-                safeSet(GroupLabel, 'Loading...')
-            end
+            groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
+            if groupSeconds > 0 then safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
+            elseif groupSeconds == 0 then safeSet(GroupLabel, 'Ready') else safeSet(GroupLabel, 'Loading...') end
         end)
-    else
-        safeSet(GroupLabel, 'Off')
-    end
+    else safeSet(GroupLabel, 'Off') end
 end})
 local GroupLabel = TasksTab:CreateLabel('Off')
 
 -- Auto Spin To Win
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v)
-    autoSpinToWin = v
-    saveCurrent()
+    autoSpinToWin = v saveCurrent()
     if v then
         safeSet(SpinLabel, 'Loading...')
         task.spawn(function()
-            spinSeconds = readSpinSeconds()
-            lastSpinRefresh = os.clock()
-            if spinSeconds > 0 then
-                safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
-            elseif spinSeconds == 0 then
-                safeSet(SpinLabel, 'Ready')
-            else
-                safeSet(SpinLabel, 'Loading...')
-            end
+            spinSeconds = readSpinSeconds() lastSpinRefresh = os.clock()
+            if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
+            elseif spinSeconds == 0 then safeSet(SpinLabel, 'Ready') else safeSet(SpinLabel, 'Loading...') end
         end)
-    else
-        safeSet(SpinLabel, 'Off')
-    end
+    else safeSet(SpinLabel, 'Off') end
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
 
 -- Auto Daily Rewards
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
-    autoDailyRewards = v
-    saveCurrent()
+    autoDailyRewards = v saveCurrent()
     if v then
         safeSet(DailyLabel, 'Loading...')
         task.spawn(function()
-            dailyText = readDailyText()
-            lastDailyRefresh = os.clock()
-            safeSet(DailyLabel, dailyText)
+            dailyText = readDailyText() lastDailyRefresh = os.clock() safeSet(DailyLabel, dailyText)
         end)
-    else
-        safeSet(DailyLabel, 'Off')
-    end
+    else safeSet(DailyLabel, 'Off') end
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
-if teleportEnabled then
-    task.spawn(function()
-        startTeleportOnce()
-    end)
-end
+if teleportEnabled then teleportToSelectedEgg() end
 if eventsEnabled then enableEvents() end
 
--- Начальная загрузка только если тумблеры включены
 if autoGroupBenefits then
     safeSet(GroupLabel, 'Loading...')
-    task.spawn(function()
-        groupSeconds = readGroupSeconds()
-        lastGroupRefresh = os.clock()
-        if groupSeconds > 0 then
-            safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
-        elseif groupSeconds == 0 then
-            safeSet(GroupLabel, 'Ready')
-        else
-            safeSet(GroupLabel, 'Loading...')
-        end
+    task.spawn(function() groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
+        if groupSeconds > 0 then safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
+        elseif groupSeconds == 0 then safeSet(GroupLabel, 'Ready') else safeSet(GroupLabel, 'Loading...') end
     end)
 end
 if autoSpinToWin then
     safeSet(SpinLabel, 'Loading...')
-    task.spawn(function()
-        spinSeconds = readSpinSeconds()
-        lastSpinRefresh = os.clock()
-        if spinSeconds > 0 then
-            safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
-        elseif spinSeconds == 0 then
-            safeSet(SpinLabel, 'Ready')
-        else
-            safeSet(SpinLabel, 'Loading...')
-        end
+    task.spawn(function() spinSeconds = readSpinSeconds() lastSpinRefresh = os.clock()
+        if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
+        elseif spinSeconds == 0 then safeSet(SpinLabel, 'Ready') else safeSet(SpinLabel, 'Loading...') end
     end)
 end
 if autoDailyRewards then
     safeSet(DailyLabel, 'Loading...')
-    task.spawn(function()
-        dailyText = readDailyText()
-        lastDailyRefresh = os.clock()
-        safeSet(DailyLabel, dailyText)
-    end)
+    task.spawn(function() dailyText = readDailyText() lastDailyRefresh = os.clock() safeSet(DailyLabel, dailyText) end)
 end
+
+local lastHatches = -1
+local stalledTime = 0
 
 local lastTick = os.clock()
 while true do
@@ -418,85 +379,72 @@ while true do
     local delta = now - lastTick
     lastTick = now
 
+    -- Hatching Stalled логика
+    if autoHatchEnabled and teleportEnabled and teleportMode == 'Hatching Stalled' then
+        local currentHatches = getEggHatches()
+        if lastHatches == -1 then
+            lastHatches = currentHatches
+            stalledTime = now
+        elseif currentHatches ~= lastHatches then
+            lastHatches = currentHatches
+            stalledTime = now
+        elseif now - stalledTime >= teleportTimeout then
+            teleportToSelectedEgg()
+            stalledTime = now
+        end
+    elseif not autoHatchEnabled or not teleportEnabled then
+        lastHatches = -1
+    end
+
     -- Искусственный таймер для group
     if autoGroupBenefits then
         if groupSeconds > 0 then
             groupSeconds = math.max(0, groupSeconds - delta)
-            if groupSeconds <= 0 then
-                safeSet(GroupLabel, 'Ready')
-                collectGroupReward()
-            else
-                safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
-            end
-        elseif groupSeconds == 0 then
-            safeSet(GroupLabel, 'Ready')
-        end
+            if groupSeconds <= 0 then safeSet(GroupLabel, 'Ready') collectGroupReward()
+            else safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds)) end
+        elseif groupSeconds == 0 then safeSet(GroupLabel, 'Ready') end
     end
 
     -- Искусственный таймер для spin
     if autoSpinToWin then
         if spinSeconds > 0 then
             spinSeconds = math.max(0, spinSeconds - delta)
-            if spinSeconds <= 0 then
-                safeSet(SpinLabel, 'Ready')
-                spinToWin()
-            else
-                safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
-            end
-        elseif spinSeconds == 0 then
-            safeSet(SpinLabel, 'Ready')
-        end
+            if spinSeconds <= 0 then safeSet(SpinLabel, 'Ready') spinToWin()
+            else safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds)) end
+        elseif spinSeconds == 0 then safeSet(SpinLabel, 'Ready') end
     end
 
     -- Искусственный таймер для daily
     if autoDailyRewards then
         if dailySeconds > 0 then
             dailySeconds = math.max(0, dailySeconds - delta)
-            if dailySeconds <= 0 then
-                dailyText = 'Ready'
-                safeSet(DailyLabel, dailyText)
-            else
-                dailyText = 'Next in ' .. formatTime(dailySeconds)
-                safeSet(DailyLabel, dailyText)
-            end
+            if dailySeconds <= 0 then dailyText = 'Ready' safeSet(DailyLabel, dailyText)
+            else dailyText = 'Next in ' .. formatTime(dailySeconds) safeSet(DailyLabel, dailyText) end
         end
     end
 
-    -- Реальная синхронизация всех трёх раз в 90 секунд
+    -- Синхронизация раз в 90 секунд
     if now - lastGroupRefresh >= SYNC_INTERVAL then
         if autoGroupBenefits then
-            task.spawn(function()
-                groupSeconds = readGroupSeconds()
-                lastGroupRefresh = os.clock()
+            task.spawn(function() groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
                 if groupSeconds > 0 then safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds)) end
             end)
         end
     end
-
     if now - lastSpinRefresh >= SYNC_INTERVAL then
         if autoSpinToWin then
-            task.spawn(function()
-                spinSeconds = readSpinSeconds()
-                lastSpinRefresh = os.clock()
+            task.spawn(function() spinSeconds = readSpinSeconds() lastSpinRefresh = os.clock()
                 if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds)) end
             end)
         end
     end
-
     if now - lastDailyRefresh >= SYNC_INTERVAL then
         if autoDailyRewards then
-            task.spawn(function()
-                dailyText = readDailyText()
-                lastDailyRefresh = os.clock()
-                safeSet(DailyLabel, dailyText)
-            end)
+            task.spawn(function() dailyText = readDailyText() lastDailyRefresh = os.clock() safeSet(DailyLabel, dailyText) end)
         end
     end
 
-    if autoDailyRewards and canClaimDaily() then
-        claimDaily()
-    end
-
+    if autoDailyRewards and canClaimDaily() then claimDaily() end
     if autoHatchEnabled then hatchEgg() end
 
     wait(0.2)
