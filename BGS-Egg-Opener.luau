@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v2
--- Исправление: проверки group/daily только при включенных тумблерах + искусственный таймер
+-- BGS Egg Opener - Fixed v3
+-- Добавлен SpinToWin таймер с 12-часовым периодом
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -91,10 +91,54 @@ if #eggList == 0 then eggList = {'Common Egg','Spotted Egg','Hacker Egg'} end
 
 local groupSeconds = -1
 local dailyText = 'Off'
+local spinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
+local lastSpinRefresh = 0
 local GROUP_REFRESH_INTERVAL = 30
 local DAILY_REFRESH_INTERVAL = 30
+local SPIN_REFRESH_INTERVAL = 30
+
+-- SpinToWin функции
+local SpinToWinModule = require(game.ReplicatedStorage.Assets.Modules.ItemDataService.SpinToWinModule)
+local function GetHalfDay()
+    return math.floor(os.time() / 43200)
+end
+local function GetTimeUntilNextHalfDay()
+    return (GetHalfDay() + 1) * 43200 - os.time()
+end
+local function readSpinSeconds()
+    local SpinIndex = nil
+    pcall(function()
+        local ItemDataService = require(game.ReplicatedStorage.Assets.Modules.ItemDataService)
+        for k, v in pairs(ItemDataService) do
+            if type(v) == 'table' and v.SPIN_TO_WIN then
+                SpinIndex = v.SPIN_TO_WIN
+                break
+            end
+        end
+    end)
+    if not SpinIndex then
+        -- Fallback: используем индекс из GuiService
+        pcall(function()
+            SpinIndex = 2 -- Обычно SPIN_TO_WIN это индекс 2
+        end)
+    end
+    
+    local lastSpinTime = nil
+    pcall(function()
+        lastSpinTime = game:GetService('ReplicatedStorage').NetworkRemoteEvent:InvokeServer('GetClientData', SpinIndex)
+    end)
+    
+    if lastSpinTime and type(lastSpinTime) == 'number' then
+        if lastSpinTime < GetHalfDay() then
+            return 0 -- Спин доступен
+        else
+            return GetTimeUntilNextHalfDay()
+        end
+    end
+    return -1
+end
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
@@ -245,6 +289,8 @@ WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets 
 WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Callback=function(v) webhookEnabled = v saveCurrent() end})
 WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
+
+-- Auto Group Benefits
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v)
     autoGroupBenefits = v
     saveCurrent()
@@ -260,8 +306,25 @@ TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefit
     end
 end})
 local GroupLabel = TasksTab:CreateLabel('Off')
-TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v) autoSpinToWin = v saveCurrent() end})
-local SpinLabel = TasksTab:CreateLabel('Ready')
+
+-- Auto Spin To Win
+TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v)
+    autoSpinToWin = v
+    saveCurrent()
+    if v then
+        safeSet(SpinLabel, 'Loading...')
+        task.spawn(function()
+            spinSeconds = readSpinSeconds()
+            lastSpinRefresh = os.clock()
+            safeSet(SpinLabel, spinSeconds > 0 and formatTime(spinSeconds) or (spinSeconds == 0 and 'Ready' or 'Loading...'))
+        end)
+    else
+        safeSet(SpinLabel, 'Off')
+    end
+end})
+local SpinLabel = TasksTab:CreateLabel('Off')
+
+-- Auto Daily Rewards
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
     autoDailyRewards = v
     saveCurrent()
@@ -288,6 +351,14 @@ if autoGroupBenefits then
         groupSeconds = readGroupSeconds()
         lastGroupRefresh = os.clock()
         safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+    end)
+end
+if autoSpinToWin then
+    safeSet(SpinLabel, 'Loading...')
+    task.spawn(function()
+        spinSeconds = readSpinSeconds()
+        lastSpinRefresh = os.clock()
+        safeSet(SpinLabel, spinSeconds > 0 and formatTime(spinSeconds) or (spinSeconds == 0 and 'Ready' or 'Loading...'))
     end)
 end
 if autoDailyRewards then
@@ -321,12 +392,36 @@ while true do
         end
     end
 
+    -- Искусственный таймер для spin
+    if autoSpinToWin then
+        if spinSeconds > 0 then
+            spinSeconds = math.max(0, spinSeconds - delta)
+            if spinSeconds <= 0 then
+                safeSet(SpinLabel, 'Ready')
+                spinToWin()
+            else
+                safeSet(SpinLabel, formatTime(spinSeconds))
+            end
+        elseif spinSeconds == 0 then
+            safeSet(SpinLabel, 'Ready')
+        end
+    end
+
     -- Реальная синхронизация group раз в 30 секунд
     if autoGroupBenefits and now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then
         task.spawn(function()
             groupSeconds = readGroupSeconds()
             lastGroupRefresh = os.clock()
             if groupSeconds > 0 then safeSet(GroupLabel, formatTime(groupSeconds)) end
+        end)
+    end
+
+    -- Реальная синхронизация spin раз в 30 секунд
+    if autoSpinToWin and now - lastSpinRefresh >= SPIN_REFRESH_INTERVAL then
+        task.spawn(function()
+            spinSeconds = readSpinSeconds()
+            lastSpinRefresh = os.clock()
+            if spinSeconds > 0 then safeSet(SpinLabel, formatTime(spinSeconds)) end
         end)
     end
 
@@ -344,7 +439,6 @@ while true do
     end
 
     if autoHatchEnabled then hatchEgg() end
-    if autoSpinToWin then spinToWin() end
 
     wait(0.2)
 end
