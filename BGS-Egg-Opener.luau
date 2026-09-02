@@ -327,7 +327,7 @@ local function sendWebhookMessage(cleanMsg, petName, chance, chatColor)
     if petName and petName ~= '' then
         local img = petImageUrls[petName]
         if img then
-            embed.author = { name = chance or petName, icon_url = img }
+            embed.author = { name = chance .. ' • ' .. petName, icon_url = img }
         end
     end
     local payload = HttpService:JSONEncode({ embeds = { embed } })
