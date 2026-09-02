@@ -68,6 +68,10 @@ end
 table.sort(eggList)
 if #eggList == 0 then eggList = {'Common Egg', 'Spotted Egg', 'Hacker Egg'} end
 
+local groupTimerSeconds = 0
+local groupLastRefresh = 0
+local GROUP_REFRESH_INTERVAL = 30
+
 local function getCharacter()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
@@ -109,13 +113,13 @@ local function formatTime(seconds)
     return string.format('%dm %ds', mins, secs)
 end
 
-local function getGroupInfo()
+local function refreshGroupTimer()
     if GuiService and GuiService.ShowGroupBenefits then
         pcall(function() GuiService:ShowGroupBenefits() end)
     end
     
     local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
-    if not ScreenGui then return '...' end
+    if not ScreenGui then return 0 end
     
     local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
     if problemFrame then
@@ -126,12 +130,32 @@ local function getGroupInfo()
                 local mins = text:match('(%d+)m') or 0
                 local secs = text:match('(%d+)s') or 0
                 local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
-                return formatTime(total)
+                groupTimerSeconds = total
+                groupLastRefresh = os.clock()
+                return total
             end
         end
     end
     
-    return 'Ready'
+    return 0
+end
+
+local function getGroupInfo()
+    if os.clock() - groupLastRefresh > GROUP_REFRESH_INTERVAL then
+        local fresh = refreshGroupTimer()
+        if fresh == 0 then
+            return 'Ready'
+        end
+    end
+    
+    local elapsed = os.clock() - groupLastRefresh
+    local remaining = math.max(0, groupTimerSeconds - elapsed)
+    
+    if remaining <= 0 then
+        return 'Ready'
+    end
+    
+    return formatTime(remaining)
 end
 
 local function getDailyInfo()
@@ -168,6 +192,8 @@ end
 
 local function collectGroupReward()
     pcall(function() Event:FireServer('CollectGroupReward') end)
+    wait(0.5)
+    refreshGroupTimer()
 end
 
 local function spinToWin()
@@ -241,10 +267,19 @@ local DailyLabel = TasksTab:CreateLabel(getDailyInfo())
 if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
+refreshGroupTimer()
+
 task.spawn(function()
     while true do
         if autoHatchEnabled then hatchEgg() end
-        if autoGroupBenefits then collectGroupReward() end
+        
+        if autoGroupBenefits then
+            local groupStatus = getGroupInfo()
+            if groupStatus == 'Ready' then
+                collectGroupReward()
+            end
+        end
+        
         if autoSpinToWin then spinToWin() end
         if autoDailyRewards then claimDaily() end
         
