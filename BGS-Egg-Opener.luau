@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v5 (возврат к v2 + SpinToWin)
--- Group Benefits и Daily Rewards работают как в v2, SpinToWin добавлен
+-- BGS Egg Opener - Fixed v6
+-- Добавлен искусственный отсчёт для Daily Rewards
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -91,6 +91,7 @@ if #eggList == 0 then eggList = {'Common Egg','Spotted Egg','Hacker Egg'} end
 
 local groupSeconds = -1
 local dailyText = 'Off'
+local dailySeconds = -1
 local spinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
@@ -127,7 +128,19 @@ local function formatTime(seconds)
     return string.format('%dm %ds', m, s)
 end
 
--- Чтение Group Benefits (из GroupBenefitsProblem как в v2)
+-- Парсинг времени из текста
+local function parseTimeFromText(text)
+    if not text then return -1 end
+    for hours, mins, secs in text:gmatch('(%d+)h%s*(%d+)m%s*(%d+)s') do
+        return tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
+    end
+    for mins, secs in text:gmatch('(%d+)m%s*(%d+)s') do
+        return tonumber(mins) * 60 + tonumber(secs)
+    end
+    return -1
+end
+
+-- Чтение Group Benefits
 local function readGroupSeconds()
     local deadline = os.clock() + 8
     repeat
@@ -153,7 +166,7 @@ local function readGroupSeconds()
     return -1
 end
 
--- Чтение Daily Rewards (как в v2)
+-- Чтение Daily Rewards
 local function readDailyText()
     local deadline = os.clock() + 8
     repeat
@@ -171,9 +184,16 @@ local function readDailyText()
                 end
             end
             local result = '...'
-            if claimed and nextReward ~= '' then result = 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
-            elseif category ~= '' and progress ~= '' then result = category .. ' [' .. progress .. ']'
-            elseif category ~= '' then result = category end
+            if claimed and nextReward ~= '' then
+                result = 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
+                dailySeconds = parseTimeFromText(nextReward)
+            elseif category ~= '' and progress ~= '' then
+                result = category .. ' [' .. progress .. ']'
+                dailySeconds = -1
+            elseif category ~= '' then
+                result = category
+                dailySeconds = -1
+            end
             pcall(function() GuiService:DisplayFrame('') end)
             return result
         end
@@ -182,7 +202,7 @@ local function readDailyText()
     return '...'
 end
 
--- Чтение Spin To Win (из TimeRemaining TextLabel)
+-- Чтение Spin To Win
 local function readSpinSeconds()
     local spinToWin = ScreenGui:FindFirstChild('SpinToWinSpooky')
     if not spinToWin then return -1 end
@@ -190,17 +210,11 @@ local function readSpinSeconds()
     local timeRemaining = spinToWin:FindFirstChild('TimeRemaining', true)
     if timeRemaining and timeRemaining:IsA('TextLabel') then
         if not timeRemaining.Visible then
-            return 0 -- Спин доступен
+            return 0
         end
-        local text = timeRemaining.Text
-        local total = -1
-        for hours, mins, secs in text:gmatch('(%d+)h%s*(%d+)m%s*(%d+)s') do
-            total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
-        end
-        if total >= 0 then return total end
+        return parseTimeFromText(timeRemaining.Text)
     end
     
-    -- Fallback: 12-часовой период
     local GetHalfDay = function() return math.floor(os.time() / 43200) end
     return (GetHalfDay() + 1) * 43200 - os.time()
 end
@@ -388,6 +402,20 @@ while true do
             end
         elseif spinSeconds == 0 then
             safeSet(SpinLabel, 'Ready')
+        end
+    end
+
+    -- Искусственный таймер для daily
+    if autoDailyRewards then
+        if dailySeconds > 0 then
+            dailySeconds = math.max(0, dailySeconds - delta)
+            if dailySeconds <= 0 then
+                dailyText = 'Ready'
+                safeSet(DailyLabel, dailyText)
+            else
+                dailyText = 'Done! Next in ' .. formatTime(dailySeconds)
+                safeSet(DailyLabel, dailyText)
+            end
         end
     end
 
