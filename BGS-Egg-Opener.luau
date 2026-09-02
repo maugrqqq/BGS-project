@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed
--- Исправление: защита от ошибки 'The current thread cannot access Instance'
+-- BGS Egg Opener - Fixed v2
+-- Исправление: проверки group/daily только при включенных тумблерах + искусственный таймер
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -90,11 +90,11 @@ table.sort(eggList)
 if #eggList == 0 then eggList = {'Common Egg','Spotted Egg','Hacker Egg'} end
 
 local groupSeconds = -1
-local dailyText = 'Loading...'
+local dailyText = 'Off'
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local GROUP_REFRESH_INTERVAL = 30
-local DAILY_REFRESH_INTERVAL = 10
+local DAILY_REFRESH_INTERVAL = 30
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
@@ -245,23 +245,59 @@ WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets 
 WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Callback=function(v) webhookEnabled = v saveCurrent() end})
 WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
-TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v) autoGroupBenefits = v saveCurrent() end})
-local GroupLabel = TasksTab:CreateLabel('Loading...')
+TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v)
+    autoGroupBenefits = v
+    saveCurrent()
+    if v then
+        safeSet(GroupLabel, 'Loading...')
+        task.spawn(function()
+            groupSeconds = readGroupSeconds()
+            lastGroupRefresh = os.clock()
+            safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+        end)
+    else
+        safeSet(GroupLabel, 'Off')
+    end
+end})
+local GroupLabel = TasksTab:CreateLabel('Off')
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v) autoSpinToWin = v saveCurrent() end})
 local SpinLabel = TasksTab:CreateLabel('Ready')
-TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v) autoDailyRewards = v saveCurrent() end})
-local DailyLabel = TasksTab:CreateLabel('Loading...')
+TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
+    autoDailyRewards = v
+    saveCurrent()
+    if v then
+        safeSet(DailyLabel, 'Loading...')
+        task.spawn(function()
+            dailyText = readDailyText()
+            lastDailyRefresh = os.clock()
+            safeSet(DailyLabel, dailyText)
+        end)
+    else
+        safeSet(DailyLabel, 'Off')
+    end
+end})
+local DailyLabel = TasksTab:CreateLabel('Off')
 
 if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
-wait(2)
-groupSeconds = readGroupSeconds()
-lastGroupRefresh = os.clock()
-dailyText = readDailyText()
-lastDailyRefresh = os.clock()
-safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
-safeSet(DailyLabel, dailyText)
+-- Начальная загрузка только если тумблеры включены
+if autoGroupBenefits then
+    safeSet(GroupLabel, 'Loading...')
+    task.spawn(function()
+        groupSeconds = readGroupSeconds()
+        lastGroupRefresh = os.clock()
+        safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+    end)
+end
+if autoDailyRewards then
+    safeSet(DailyLabel, 'Loading...')
+    task.spawn(function()
+        dailyText = readDailyText()
+        lastDailyRefresh = os.clock()
+        safeSet(DailyLabel, dailyText)
+    end)
+end
 
 local lastTick = os.clock()
 while true do
@@ -270,30 +306,37 @@ while true do
     local delta = now - lastTick
     lastTick = now
 
-    if groupSeconds > 0 then
-        groupSeconds = math.max(0, groupSeconds - delta)
-        if groupSeconds <= 0 then
+    -- Искусственный таймер для group
+    if autoGroupBenefits then
+        if groupSeconds > 0 then
+            groupSeconds = math.max(0, groupSeconds - delta)
+            if groupSeconds <= 0 then
+                safeSet(GroupLabel, 'Ready')
+                collectGroupReward()
+            else
+                safeSet(GroupLabel, formatTime(groupSeconds))
+            end
+        elseif groupSeconds == 0 then
             safeSet(GroupLabel, 'Ready')
-            if autoGroupBenefits then collectGroupReward() end
-        else
-            safeSet(GroupLabel, formatTime(groupSeconds))
         end
-    elseif groupSeconds == 0 then
-        safeSet(GroupLabel, 'Ready')
-    else
-        safeSet(GroupLabel, 'Loading...')
     end
 
-    if now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then
-        groupSeconds = readGroupSeconds()
-        lastGroupRefresh = now
-        if groupSeconds > 0 then safeSet(GroupLabel, formatTime(groupSeconds)) end
+    -- Реальная синхронизация group раз в 30 секунд
+    if autoGroupBenefits and now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then
+        task.spawn(function()
+            groupSeconds = readGroupSeconds()
+            lastGroupRefresh = os.clock()
+            if groupSeconds > 0 then safeSet(GroupLabel, formatTime(groupSeconds)) end
+        end)
     end
 
-    if now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then
-        dailyText = readDailyText()
-        lastDailyRefresh = now
-        safeSet(DailyLabel, dailyText)
+    -- Реальная синхронизация daily раз в 30 секунд
+    if autoDailyRewards and now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then
+        task.spawn(function()
+            dailyText = readDailyText()
+            lastDailyRefresh = os.clock()
+            safeSet(DailyLabel, dailyText)
+        end)
     end
 
     if autoDailyRewards and canClaimDaily() then
