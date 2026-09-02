@@ -217,6 +217,7 @@ end
 
 local function readAlienSpinSeconds()
     local deadline = os.clock() + 8
+    local result = -1
     repeat
         pcall(function()
             if GuiService.UpdateAlienSpinToWin then
@@ -230,19 +231,19 @@ local function readAlienSpinSeconds()
             local timeRemaining = alienSpin:FindFirstChild('TimeRemaining', true)
             if timeRemaining and timeRemaining:IsA('TextLabel') then
                 if not timeRemaining.Visible then
-                    pcall(function() GuiService:DisplayFrame('') end)
-                    return 0
-                end
-                local seconds = parseTimeFromText(timeRemaining.Text)
-                if seconds >= 0 then
-                    pcall(function() GuiService:DisplayFrame('') end)
-                    return seconds
+                    result = 0
+                else
+                    local seconds = parseTimeFromText(timeRemaining.Text)
+                    if seconds >= 0 then
+                        result = seconds
+                    end
                 end
             end
         end
+        if result >= 0 then break end
     until os.clock() >= deadline
     pcall(function() GuiService:DisplayFrame('') end)
-    return -1
+    return result
 end
 
 local function canClaimDaily()
@@ -264,7 +265,12 @@ local function collectGroupReward()
     lastGroupRefresh = os.clock()
 end
 local function spinToWin() pcall(function() Event:FireServer('SpinToWin') end) end
-local function alienSpinToWin() pcall(function() Event:FireServer('AlienSpinToWin') end) end
+local function alienSpinToWin()
+    pcall(function() Event:FireServer('AlienSpinToWin') end)
+    wait(0.5)
+    alienSpinSeconds = readAlienSpinSeconds()
+    lastAlienSpinRefresh = os.clock()
+end
 local function claimDaily()
     pcall(function() Event:FireServer('ClaimDailyReward') end)
     wait(0.5)
@@ -378,7 +384,10 @@ TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpin
         task.spawn(function()
             alienSpinSeconds = readAlienSpinSeconds() lastAlienSpinRefresh = os.clock()
             if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds))
-            elseif alienSpinSeconds == 0 then safeSet(AlienSpinLabel, 'Ready') else safeSet(AlienSpinLabel, 'Loading...') end
+            elseif alienSpinSeconds == 0 then
+                safeSet(AlienSpinLabel, 'Ready')
+                alienSpinToWin()
+            else safeSet(AlienSpinLabel, 'Loading...') end
         end)
     else safeSet(AlienSpinLabel, 'Off') end
 end})
@@ -416,7 +425,10 @@ if autoAlienSpinToWin then
     safeSet(AlienSpinLabel, 'Loading...')
     task.spawn(function() alienSpinSeconds = readAlienSpinSeconds() lastAlienSpinRefresh = os.clock()
         if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds))
-        elseif alienSpinSeconds == 0 then safeSet(AlienSpinLabel, 'Ready') else safeSet(AlienSpinLabel, 'Loading...') end
+        elseif alienSpinSeconds == 0 then
+            safeSet(AlienSpinLabel, 'Ready')
+            alienSpinToWin()
+        else safeSet(AlienSpinLabel, 'Loading...') end
     end)
 end
 if autoDailyRewards then
@@ -469,9 +481,14 @@ while true do
     if autoAlienSpinToWin then
         if alienSpinSeconds > 0 then
             alienSpinSeconds = math.max(0, alienSpinSeconds - delta)
-            if alienSpinSeconds <= 0 then safeSet(AlienSpinLabel, 'Ready') alienSpinToWin()
+            if alienSpinSeconds <= 0 then
+                safeSet(AlienSpinLabel, 'Ready')
+                alienSpinToWin()
             else safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds)) end
-        elseif alienSpinSeconds == 0 then safeSet(AlienSpinLabel, 'Ready') end
+        elseif alienSpinSeconds == 0 then
+            safeSet(AlienSpinLabel, 'Ready')
+            alienSpinToWin()
+        end
     end
 
     if autoDailyRewards then
@@ -499,7 +516,11 @@ while true do
     if now - lastAlienSpinRefresh >= SYNC_INTERVAL then
         if autoAlienSpinToWin then
             task.spawn(function() alienSpinSeconds = readAlienSpinSeconds() lastAlienSpinRefresh = os.clock()
-                if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds)) end
+                if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds))
+                elseif alienSpinSeconds == 0 then
+                    safeSet(AlienSpinLabel, 'Ready')
+                    alienSpinToWin()
+                end
             end)
         end
     end
