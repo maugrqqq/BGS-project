@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v8
--- Тайминги синхронизации ровно 30 секунд для всех трёх
+-- BGS Egg Opener - Fixed v9
+-- Разделены тумблеры: Open Selected Egg (открытие) и Teleport To Egg (телепортация)
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -67,6 +67,7 @@ local TasksTab = Window:CreateTab('Tasks', 4483362458)
 
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
 local autoHatchEnabled = config.autoHatchEnabled or false
+local teleportEnabled = config.teleportEnabled or false
 local tripleHatchEnabled = config.tripleHatchEnabled or false
 local webhookEnabled = config.webhookEnabled or false
 local webhookURL = config.webhookURL or ''
@@ -96,7 +97,7 @@ local spinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local lastSpinRefresh = 0
-local SYNC_INTERVAL = 30 -- Единый интервал 30 секунд для всех
+local SYNC_INTERVAL = 30
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
@@ -201,18 +202,17 @@ local function readDailyText()
     return '...'
 end
 
--- Чтение Spin To Win - правильный расчёт через os.time()
+-- Чтение Spin To Win
 local function readSpinSeconds()
     local GetHalfDay = function() return math.floor(os.time() / 43200) end
     local secondsLeft = (GetHalfDay() + 1) * 43200 - os.time()
     
-    -- Проверяем, есть ли реальное значение в TimeRemaining
     local spinToWin = ScreenGui:FindFirstChild('SpinToWinSpooky')
     if spinToWin then
         local timeRemaining = spinToWin:FindFirstChild('TimeRemaining', true)
         if timeRemaining and timeRemaining:IsA('TextLabel') then
             if not timeRemaining.Visible then
-                return 0 -- Спин доступен
+                return 0
             end
         end
     end
@@ -266,7 +266,7 @@ local function sendWebhook(message)
     pcall(function() HttpService:PostAsync(webhookURL, HttpService:JSONEncode({content = message})) end)
 end
 local function saveCurrent()
-    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
+    saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, teleportEnabled=teleportEnabled, tripleHatchEnabled=tripleHatchEnabled,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards})
 end
@@ -280,7 +280,16 @@ end)
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
 MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt) selectedEgg = opt[1] saveCurrent() end})
-MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, Callback=function(v) autoHatchEnabled = v if v then startTeleportLoop() else stopTeleportLoop() end saveCurrent() end})
+MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, Callback=function(v) autoHatchEnabled = v saveCurrent() end})
+MainTab:CreateToggle({Name='Teleport To Egg', CurrentValue=teleportEnabled, Callback=function(v)
+    teleportEnabled = v
+    if v then
+        startTeleportLoop()
+    else
+        stopTeleportLoop()
+    end
+    saveCurrent()
+end})
 MainTab:CreateToggle({Name='Triple Hatch', CurrentValue=tripleHatchEnabled, Callback=function(v) tripleHatchEnabled = v saveCurrent() end})
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
@@ -352,7 +361,7 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
-if autoHatchEnabled then startTeleportLoop() end
+if teleportEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
 -- Начальная загрузка только если тумблеры включены
