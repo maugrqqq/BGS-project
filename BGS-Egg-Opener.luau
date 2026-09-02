@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v3
--- Добавлен SpinToWin таймер с 12-часовым периодом
+-- BGS Egg Opener - Fixed v4
+-- Исправление: чтение таймеров напрямую из UI фреймов игры
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -99,45 +99,112 @@ local GROUP_REFRESH_INTERVAL = 30
 local DAILY_REFRESH_INTERVAL = 30
 local SPIN_REFRESH_INTERVAL = 30
 
--- SpinToWin функции
-local SpinToWinModule = require(game.ReplicatedStorage.Assets.Modules.ItemDataService.SpinToWinModule)
-local function GetHalfDay()
-    return math.floor(os.time() / 43200)
+local guiServiceModule = require(game.Players.LocalPlayer.PlayerGui.ScreenGui.ClientScript.Modules.GuiService)
+
+-- Функция для парсинга времени из текста
+local function parseTimeText(text)
+    if not text then return -1 end
+    local total = 0
+    local found = false
+    
+    for hours, mins, secs in text:gmatch('(%d+)h%s*(%d+)m%s*(%d+)s') do
+        total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
+        found = true
+    end
+    if found then return total end
+    
+    for mins, secs in text:gmatch('(%d+)m%s*(%d+)s') do
+        total = tonumber(mins) * 60 + tonumber(secs)
+        found = true
+    end
+    if found then return total end
+    
+    return -1
 end
-local function GetTimeUntilNextHalfDay()
-    return (GetHalfDay() + 1) * 43200 - os.time()
-end
-local function readSpinSeconds()
-    local SpinIndex = nil
-    pcall(function()
-        local ItemDataService = require(game.ReplicatedStorage.Assets.Modules.ItemDataService)
-        for k, v in pairs(ItemDataService) do
-            if type(v) == 'table' and v.SPIN_TO_WIN then
-                SpinIndex = v.SPIN_TO_WIN
-                break
+
+-- Чтение Group Benefits
+local function readGroupSeconds()
+    local groupBenefitsReward = ScreenGui:FindFirstChild('GroupBenefitsReward')
+    if not groupBenefitsReward then return -1 end
+    
+    local comeBack = groupBenefitsReward:FindFirstChild('ComeBack')
+    if comeBack and comeBack:IsA('TextLabel') and comeBack.Text ~= '' then
+        local seconds = parseTimeText(comeBack.Text)
+        if seconds >= 0 then return seconds end
+    end
+    
+    -- Если ComeBack не найден, пробуем через GroupBenefitsProblem
+    local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
+    if problemFrame then
+        for _, d in ipairs(problemFrame:GetDescendants()) do
+            if d:IsA('TextLabel') and d.Name == 'Desc' and d.Text ~= '' then
+                local seconds = parseTimeText(d.Text)
+                if seconds >= 0 then return seconds end
             end
         end
-    end)
-    if not SpinIndex then
-        -- Fallback: используем индекс из GuiService
-        pcall(function()
-            SpinIndex = 2 -- Обычно SPIN_TO_WIN это индекс 2
-        end)
     end
     
-    local lastSpinTime = nil
-    pcall(function()
-        lastSpinTime = game:GetService('ReplicatedStorage').NetworkRemoteEvent:InvokeServer('GetClientData', SpinIndex)
-    end)
+    return -1
+end
+
+-- Чтение Daily Rewards
+local function readDailyText()
+    local frame = ScreenGui:FindFirstChild('DailyRewards')
+    if not frame then
+        -- Пробуем через GuiService
+        pcall(function()
+            guiServiceModule.DisplayFrame('DailyRewards')
+        end)
+        wait(0.5)
+        frame = ScreenGui:FindFirstChild('DailyRewards')
+    end
     
-    if lastSpinTime and type(lastSpinTime) == 'number' then
-        if lastSpinTime < GetHalfDay() then
-            return 0 -- Спин доступен
-        else
-            return GetTimeUntilNextHalfDay()
+    if not frame then return 'Off' end
+    
+    local category, progress, nextReward = '', '', ''
+    local claimed = false
+    
+    for _, d in ipairs(frame:GetDescendants()) do
+        if d:IsA('TextLabel') then
+            if d.Name == 'Category' and d.Text ~= '' then category = d.Text end
+            if d.Text:find('%d+ %/ %d+') then progress = d.Text end
+            if d.Name == 'NextRewardIn' or d.Name == 'ComeBack' then nextReward = d.Text end
+            if d.Text:find('Claimed') or d.Text:find('Done') then claimed = true end
         end
     end
-    return -1
+    
+    local result = '...'
+    if claimed and nextReward ~= '' then
+        result = 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
+    elseif category ~= '' and progress ~= '' then
+        result = category .. ' [' .. progress .. ']'
+    elseif category ~= '' then
+        result = category
+    end
+    
+    pcall(function()
+        guiServiceModule.DisplayFrame('')
+    end)
+    return result
+end
+
+-- Чтение Spin To Win
+local function readSpinSeconds()
+    local spinToWin = ScreenGui:FindFirstChild('SpinToWinSpooky')
+    if not spinToWin then return -1 end
+    
+    local timeRemaining = spinToWin:FindFirstChild('TimeRemaining', true)
+    if timeRemaining and timeRemaining:IsA('TextLabel') then
+        if not timeRemaining.Visible then
+            return 0 -- Спин доступен
+        end
+        local seconds = parseTimeText(timeRemaining.Text)
+        if seconds >= 0 then return seconds end
+    end
+    
+    -- Fallback: используем 12-часовой период
+    local GetHalfDay = function() return math.floor(os.time() / 43200) end
+    return (GetHalfDay() + 1) * 43200 - os.time()
 end
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
@@ -168,61 +235,8 @@ local function formatTime(seconds)
     return string.format('%dm %ds', m, s)
 end
 
-local function readGroupSeconds()
-    local deadline = os.clock() + 8
-    repeat
-        pcall(function() GuiService:ShowGroupBenefits() end)
-        wait(0.4)
-        local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
-        if problemFrame then
-            for _, d in ipairs(problemFrame:GetDescendants()) do
-                if d:IsA('TextLabel') and d.Name == 'Desc' and d.Text ~= '' then
-                    local text = d.Text
-                    if text:find('Come back in') then
-                        local hours = text:match('(%d+)h') or 0
-                        local mins = text:match('(%d+)m') or 0
-                        local secs = text:match('(%d+)s') or 0
-                        local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
-                        problemFrame.Visible = false
-                        return total
-                    end
-                end
-            end
-        end
-    until os.clock() >= deadline
-    return -1
-end
-
-local function readDailyText()
-    local deadline = os.clock() + 8
-    repeat
-        pcall(function() GuiService:DisplayFrame('DailyRewards') end)
-        wait(0.4)
-        local frame = ScreenGui:FindFirstChild('DailyRewards')
-        if frame then
-            local category, progress, nextReward, claimed = '', '', '', false
-            for _, d in ipairs(frame:GetDescendants()) do
-                if d:IsA('TextLabel') then
-                    if d.Name == 'Category' and d.Text ~= '' then category = d.Text end
-                    if d.Text:find('%d+ %/ %d+') then progress = d.Text end
-                    if d.Name == 'NextRewardIn' then nextReward = d.Text end
-                    if d.Text == 'Claimed reward!' then claimed = true end
-                end
-            end
-            local result = '...'
-            if claimed and nextReward ~= '' then result = 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
-            elseif category ~= '' and progress ~= '' then result = category .. ' [' .. progress .. ']'
-            elseif category ~= '' then result = category end
-            pcall(function() GuiService:DisplayFrame('') end)
-            return result
-        end
-    until os.clock() >= deadline
-    pcall(function() GuiService:DisplayFrame('') end)
-    return '...'
-end
-
 local function canClaimDaily()
-    if not dailyText or dailyText == '...' then return false end
+    if not dailyText or dailyText == '...' or dailyText == 'Off' then return false end
     if dailyText:find('Done!') then return false end
     local progress = dailyText:match('%[(.-)%]')
     if not progress then return false end
