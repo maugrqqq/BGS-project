@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v6
--- Добавлен искусственный отсчёт для Daily Rewards
+-- BGS Egg Opener - Fixed v7
+-- Исправлены таймеры: Next in для Group/Daily, правильный SpinToWin через os.time()
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -185,8 +185,9 @@ local function readDailyText()
             end
             local result = '...'
             if claimed and nextReward ~= '' then
-                result = 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
-                dailySeconds = parseTimeFromText(nextReward)
+                local timeStr = nextReward:gsub('Next reward in ', '')
+                result = 'Next in ' .. timeStr
+                dailySeconds = parseTimeFromText(timeStr)
             elseif category ~= '' and progress ~= '' then
                 result = category .. ' [' .. progress .. ']'
                 dailySeconds = -1
@@ -202,26 +203,28 @@ local function readDailyText()
     return '...'
 end
 
--- Чтение Spin To Win
+-- Чтение Spin To Win - правильный расчёт через os.time()
 local function readSpinSeconds()
-    local spinToWin = ScreenGui:FindFirstChild('SpinToWinSpooky')
-    if not spinToWin then return -1 end
+    local GetHalfDay = function() return math.floor(os.time() / 43200) end
+    local secondsLeft = (GetHalfDay() + 1) * 43200 - os.time()
     
-    local timeRemaining = spinToWin:FindFirstChild('TimeRemaining', true)
-    if timeRemaining and timeRemaining:IsA('TextLabel') then
-        if not timeRemaining.Visible then
-            return 0
+    -- Проверяем, есть ли реальное значение в TimeRemaining
+    local spinToWin = ScreenGui:FindFirstChild('SpinToWinSpooky')
+    if spinToWin then
+        local timeRemaining = spinToWin:FindFirstChild('TimeRemaining', true)
+        if timeRemaining and timeRemaining:IsA('TextLabel') then
+            if not timeRemaining.Visible then
+                return 0 -- Спин доступен
+            end
         end
-        return parseTimeFromText(timeRemaining.Text)
     end
     
-    local GetHalfDay = function() return math.floor(os.time() / 43200) end
-    return (GetHalfDay() + 1) * 43200 - os.time()
+    return math.max(0, secondsLeft)
 end
 
 local function canClaimDaily()
     if not dailyText or dailyText == '...' or dailyText == 'Off' then return false end
-    if dailyText:find('Done!') then return false end
+    if dailyText:find('Next in') then return false end
     local progress = dailyText:match('%[(.-)%]')
     if not progress then return false end
     local currentStr = progress:match('([%d,]+)')
@@ -297,7 +300,13 @@ TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefit
         task.spawn(function()
             groupSeconds = readGroupSeconds()
             lastGroupRefresh = os.clock()
-            safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+            if groupSeconds > 0 then
+                safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
+            elseif groupSeconds == 0 then
+                safeSet(GroupLabel, 'Ready')
+            else
+                safeSet(GroupLabel, 'Loading...')
+            end
         end)
     else
         safeSet(GroupLabel, 'Off')
@@ -314,7 +323,13 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
         task.spawn(function()
             spinSeconds = readSpinSeconds()
             lastSpinRefresh = os.clock()
-            safeSet(SpinLabel, spinSeconds > 0 and formatTime(spinSeconds) or (spinSeconds == 0 and 'Ready' or 'Loading...'))
+            if spinSeconds > 0 then
+                safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
+            elseif spinSeconds == 0 then
+                safeSet(SpinLabel, 'Ready')
+            else
+                safeSet(SpinLabel, 'Loading...')
+            end
         end)
     else
         safeSet(SpinLabel, 'Off')
@@ -348,7 +363,13 @@ if autoGroupBenefits then
     task.spawn(function()
         groupSeconds = readGroupSeconds()
         lastGroupRefresh = os.clock()
-        safeSet(GroupLabel, groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+        if groupSeconds > 0 then
+            safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
+        elseif groupSeconds == 0 then
+            safeSet(GroupLabel, 'Ready')
+        else
+            safeSet(GroupLabel, 'Loading...')
+        end
     end)
 end
 if autoSpinToWin then
@@ -356,7 +377,13 @@ if autoSpinToWin then
     task.spawn(function()
         spinSeconds = readSpinSeconds()
         lastSpinRefresh = os.clock()
-        safeSet(SpinLabel, spinSeconds > 0 and formatTime(spinSeconds) or (spinSeconds == 0 and 'Ready' or 'Loading...'))
+        if spinSeconds > 0 then
+            safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
+        elseif spinSeconds == 0 then
+            safeSet(SpinLabel, 'Ready')
+        else
+            safeSet(SpinLabel, 'Loading...')
+        end
     end)
 end
 if autoDailyRewards then
@@ -383,7 +410,7 @@ while true do
                 safeSet(GroupLabel, 'Ready')
                 collectGroupReward()
             else
-                safeSet(GroupLabel, formatTime(groupSeconds))
+                safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds))
             end
         elseif groupSeconds == 0 then
             safeSet(GroupLabel, 'Ready')
@@ -398,7 +425,7 @@ while true do
                 safeSet(SpinLabel, 'Ready')
                 spinToWin()
             else
-                safeSet(SpinLabel, formatTime(spinSeconds))
+                safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds))
             end
         elseif spinSeconds == 0 then
             safeSet(SpinLabel, 'Ready')
@@ -413,7 +440,7 @@ while true do
                 dailyText = 'Ready'
                 safeSet(DailyLabel, dailyText)
             else
-                dailyText = 'Done! Next in ' .. formatTime(dailySeconds)
+                dailyText = 'Next in ' .. formatTime(dailySeconds)
                 safeSet(DailyLabel, dailyText)
             end
         end
@@ -424,7 +451,7 @@ while true do
         task.spawn(function()
             groupSeconds = readGroupSeconds()
             lastGroupRefresh = os.clock()
-            if groupSeconds > 0 then safeSet(GroupLabel, formatTime(groupSeconds)) end
+            if groupSeconds > 0 then safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds)) end
         end)
     end
 
@@ -433,7 +460,7 @@ while true do
         task.spawn(function()
             spinSeconds = readSpinSeconds()
             lastSpinRefresh = os.clock()
-            if spinSeconds > 0 then safeSet(SpinLabel, formatTime(spinSeconds)) end
+            if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds)) end
         end)
     end
 
