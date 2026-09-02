@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v15
--- Добавлен Alien Spin To Win с таймером
+-- BGS Egg Opener - Fixed v16
+-- Исправлен порядок создания AlienSpinLabel (до тумблера) + защита safeSet от nil
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -9,6 +9,7 @@ local HttpService = game:GetService('HttpService')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 
 local function safeSet(label, text)
+    if not label then return end
     local ok, err = pcall(function() label:Set(text) end)
     if not ok then
         task.spawn(function() task.wait(0.05) pcall(function() label:Set(text) end) end)
@@ -351,6 +352,9 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
 
+-- Создаём AlienSpinLabel ДО тумблера
+local AlienSpinLabel = TasksTab:CreateLabel('Off')
+
 TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpinToWin, Callback=function(v)
     autoAlienSpinToWin = v saveCurrent()
     if v then
@@ -362,7 +366,6 @@ TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpin
         end)
     else safeSet(AlienSpinLabel, 'Off') end
 end})
-local AlienSpinLabel = TasksTab:CreateLabel('Off')
 
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
     autoDailyRewards = v saveCurrent()
