@@ -7,6 +7,7 @@ local GuiService = Services:GetService('GuiService')
 local ScreenGui = game.Players.LocalPlayer.PlayerGui:WaitForChild('ScreenGui', 10)
 local HttpService = game:GetService('HttpService')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
+local TextChatService = game:GetService('TextChatService')
 
 local function safeSet(label, text)
     if not label then return end
@@ -296,6 +297,30 @@ local function disableEvents()
 end
 
 local petImageUrls = {
+    ["Alien Ghost"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/6/68/Alien_Ghost.png/revision/latest?cb=20260810210117",
+    ["Mythic Alien Ghost"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/a/a9/Mythic_Alien_Ghost.webp/revision/latest?cb=20260814222905",
+    ["Shiny Alien Ghost"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/6/68/Alien_Ghost.png/revision/latest?cb=20260810210117",
+    ["Shiny Mythic Alien Ghost"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/a/a9/Mythic_Alien_Ghost.webp/revision/latest?cb=20260814222905",
+    ["Alien Omen"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/9/9e/Alien_Omen.png/revision/latest?cb=20260814224125",
+    ["Mythic Alien Omen"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/7/79/Mythic_Alien_Omen.webp/revision/latest?cb=20260814222911",
+    ["Shiny Alien Omen"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/9/9e/Alien_Omen.png/revision/latest?cb=20260814224125",
+    ["Shiny Mythic Alien Omen"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/7/79/Mythic_Alien_Omen.webp/revision/latest?cb=20260814222911",
+    ["Alien Overlord"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/1/19/Alien_Overlord.png/revision/latest?cb=20260814224130",
+    ["Mythic Alien Overlord"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/f/f4/Mythic_Alien_Overlord.webp/revision/latest?cb=20260814222916",
+    ["Shiny Alien Overlord"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/1/19/Alien_Overlord.png/revision/latest?cb=20260814224130",
+    ["Shiny Mythic Alien Overlord"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/f/f4/Mythic_Alien_Overlord.webp/revision/latest?cb=20260814222916",
+    ["UFO"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/7/77/UFO.png/revision/latest?cb=20260814223242",
+    ["Mythic UFO"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/7/7a/Mythic_UFO.webp/revision/latest?cb=20260814222928",
+    ["Shiny UFO"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/7/77/UFO.png/revision/latest?cb=20260814223242",
+    ["Shiny Mythic UFO"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/7/7a/Mythic_UFO.webp/revision/latest?cb=20260814222928",
+    ["Alien Kraken"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/f/f5/Alien_Kraken.png/revision/latest?cb=20260814223208",
+    ["Mythic Alien Kraken"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/2/2b/Mythic_Alien_Kraken.webp/revision/latest?cb=20260814222923",
+    ["Shiny Alien Kraken"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/f/f5/Alien_Kraken.png/revision/latest?cb=20260814223208",
+    ["Shiny Mythic Alien Kraken"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/2/2b/Mythic_Alien_Kraken.webp/revision/latest?cb=20260814222923",
+    ["Galactic Dementor"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/5/5b/Galactic_Dementor.png/revision/latest?cb=20260814223227",
+    ["Mythic Galactic Dementor"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/4/40/Mythic_Galactic_Dementor.webp/revision/latest?cb=20260814222933",
+    ["Shiny Galactic Dementor"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/5/5b/Galactic_Dementor.png/revision/latest?cb=20260814223227",
+    ["Shiny Mythic Galactic Dementor"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/4/40/Mythic_Galactic_Dementor.webp/revision/latest?cb=20260814222933",
     ["Hacker Phoenix"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/6/69/Hacker_Phoenix.png/revision/latest?cb=20260829182629",
     ["Hacker Gem"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/9/91/Hacker_Gem.png/revision/latest?cb=20260829172252",
     ["D0GGY1337"] = "https://static.wikia.nocookie.net/bubble-gum-simulator/images/d/d4/D0GGY1337.png/revision/latest?cb=20260829185938",
@@ -343,6 +368,50 @@ local function sendWebhookMessage(cleanMsg, petName, chance, chatColor)
     end)
 end
 
+local function processSystemMessage(rawText)
+    if not webhookEnabled or webhookURL == '' then return end
+    local playerName = LocalPlayer.Name
+    local text = tostring(rawText or '')
+    if text == '' then return end
+    local cleanText = text:gsub('<[^>]+>', '')
+    if cleanText:sub(1, #playerName) ~= playerName then return end
+    for petName, imgUrl in pairs(petImageUrls) do
+        if cleanText:find(petName, 1, true) then
+            local chatColor = parseChatColor(text)
+            local chance = cleanText:match('%(([^%)]+)%)') or ''
+            sendWebhookMessage(cleanText, petName, chance, chatColor)
+            break
+        end
+    end
+end
+
+local function connectChatMonitor()
+    pcall(function()
+        if TextChatService and TextChatService.MessageReceived then
+            TextChatService.MessageReceived:Connect(function(msg)
+                if msg and msg.Text then
+                    processSystemMessage(msg.Text)
+                end
+            end)
+        end
+    end)
+    pcall(function()
+        local chatEvents = game.ReplicatedStorage:FindFirstChild('DefaultChatSystemChatEvents')
+        if chatEvents then
+            local onMessage = chatEvents:FindFirstChild('OnMessageDoneFiltering')
+            if onMessage and onMessage:IsA('RemoteEvent') then
+                onMessage.OnClientEvent:Connect(function(data)
+                    if data and type(data) == 'table' and data.Message then
+                        processSystemMessage(tostring(data.Message))
+                    end
+                end)
+            end
+        end
+    end)
+end
+
+connectChatMonitor()
+
 local function saveCurrent()
     saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
@@ -350,20 +419,6 @@ local function saveCurrent()
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
         autoAlienSpinToWin=autoAlienSpinToWin})
 end
-
-NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
-    if eventName == 'DisplayLegendaryInChat' then
-        local args = {...}
-        if webhookEnabled and webhookURL ~= '' then
-            local msg = args[1] .. ' hatched a Legendary ' .. args[2]
-            local cleanMsg = msg:gsub('<[^>]+>', '')
-            local chatColor = parseChatColor(msg)
-            local petName = args[2] or ''
-            local chance = cleanMsg:match('%(([^%)]+)%)') or ''
-            sendWebhookMessage(cleanMsg, petName, chance, chatColor)
-        end
-    end
-end)
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
 MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt)
