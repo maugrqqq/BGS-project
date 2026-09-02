@@ -118,17 +118,11 @@ local function getDailyInfo()
     local current = 0
     local leaderstats = LocalPlayer:WaitForChild('leaderstats')
     
-    if challengeType == 'Eggs' then
-        current = leaderstats['Eggs Opened'].Value
-    elseif challengeType == 'Gems' then
-        current = leaderstats.Gems.Value
-    elseif challengeType == 'Coins' then
-        current = leaderstats.Coins.Value
-    elseif challengeType == 'Bubbles' then
-        current = leaderstats['Bubbles Blown'].Value
-    elseif challengeType == 'Legendaries' then
-        current = math.min(leaderstats['Eggs Opened'].Value, target)
-    end
+    if challengeType == 'Eggs' then current = leaderstats['Eggs Opened'].Value
+    elseif challengeType == 'Gems' then current = leaderstats.Gems.Value
+    elseif challengeType == 'Coins' then current = leaderstats.Coins.Value
+    elseif challengeType == 'Bubbles' then current = leaderstats['Bubbles Blown'].Value
+    elseif challengeType == 'Legendaries' then current = math.min(leaderstats['Eggs Opened'].Value, target) end
     
     local timeUntil = DailyRewardsModule:GetTimeUntilTomorrow()
     
@@ -137,6 +131,27 @@ local function getDailyInfo()
     else
         return string.format('Quest: %s %d/%d', challengeType, current, target)
     end
+end
+
+local function getGroupInfo()
+    local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
+    if not ScreenGui then return '...' end
+    
+    local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
+    if problemFrame then
+        for _, d in ipairs(problemFrame:GetDescendants()) do
+            if d:IsA('TextLabel') and d.Name == 'Desc' and d.Text ~= '' then
+                local text = d.Text
+                local hours = text:match('(%d+)h') or 0
+                local mins = text:match('(%d+)m') or 0
+                local secs = text:match('(%d+)s') or 0
+                local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
+                return formatTime(total)
+            end
+        end
+    end
+    
+    return 'Ready'
 end
 
 local function collectGroupReward()
@@ -205,7 +220,7 @@ WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com
 
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v) autoGroupBenefits = v saveCurrent() end})
-local GroupLabel = TasksTab:CreateLabel('Ready')
+local GroupLabel = TasksTab:CreateLabel(getGroupInfo())
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v) autoSpinToWin = v saveCurrent() end})
 local SpinLabel = TasksTab:CreateLabel('Ready')
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v) autoDailyRewards = v saveCurrent() end})
@@ -221,6 +236,7 @@ task.spawn(function()
         if autoSpinToWin then spinToWin() end
         if autoDailyRewards then claimDaily() end
         
+        GroupLabel:Set(getGroupInfo())
         DailyLabel:Set(getDailyInfo())
         
         wait(1)
