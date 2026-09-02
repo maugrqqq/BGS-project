@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v17
--- AlienSpinToWin: открывает меню и читает TimeRemaining как Group Benefits/SpinToWin
+-- BGS Egg Opener - Fixed v18
+-- AlienSpinLabel теперь под тумблером
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -371,8 +371,6 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
 
-local AlienSpinLabel = TasksTab:CreateLabel('Off')
-
 TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpinToWin, Callback=function(v)
     autoAlienSpinToWin = v saveCurrent()
     if v then
@@ -384,6 +382,7 @@ TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpin
         end)
     else safeSet(AlienSpinLabel, 'Off') end
 end})
+local AlienSpinLabel = TasksTab:CreateLabel('Off')
 
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
     autoDailyRewards = v saveCurrent()
