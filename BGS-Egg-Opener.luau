@@ -71,8 +71,8 @@ local groupSeconds = 0
 local dailyText = '...'
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
-local GROUP_REFRESH = 30
-local DAILY_REFRESH = 10
+local GROUP_REFRESH_INTERVAL = 30
+local DAILY_REFRESH_INTERVAL = 10
 
 local function getCharacter()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -115,7 +115,7 @@ end
 
 local function readGroupSeconds()
     pcall(function() GuiService:ShowGroupBenefits() end)
-    wait(0.2)
+    wait(0.3)
     local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
     if problemFrame then
         for _, d in ipairs(problemFrame:GetDescendants()) do
@@ -135,7 +135,7 @@ end
 
 local function readDailyText()
     pcall(function() GuiService:DisplayFrame('DailyRewards') end)
-    wait(0.2)
+    wait(0.3)
     local frame = ScreenGui:FindFirstChild('DailyRewards')
     local result = '...'
     if frame then
@@ -256,10 +256,15 @@ local DailyLabel = TasksTab:CreateLabel('Loading...')
 if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
-groupSeconds = readGroupSeconds()
-lastGroupRefresh = os.clock()
-dailyText = readDailyText()
-lastDailyRefresh = os.clock()
+task.spawn(function()
+    wait(2)
+    groupSeconds = readGroupSeconds()
+    lastGroupRefresh = os.clock()
+    dailyText = readDailyText()
+    lastDailyRefresh = os.clock()
+    GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or 'Ready')
+    DailyLabel:Set(dailyText)
+end)
 
 task.spawn(function()
     local lastTick = os.clock()
@@ -280,7 +285,12 @@ task.spawn(function()
             GroupLabel:Set(formatTime(groupSeconds))
         end
         
-        if now - lastDailyRefresh >= DAILY_REFRESH then
+        if now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then
+            groupSeconds = readGroupSeconds()
+            lastGroupRefresh = now
+        end
+        
+        if now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then
             dailyText = readDailyText()
             lastDailyRefresh = now
         end
