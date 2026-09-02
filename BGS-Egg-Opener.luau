@@ -22,8 +22,6 @@ end
 
 local config = loadConfig()
 
-local DailyRewardsModule = require(game.ReplicatedStorage.Assets.Modules.ItemDataService.DailyRewardsModule)
-
 task.spawn(function()
     local CoreGui = game:GetService('CoreGui')
     while true do
@@ -109,30 +107,6 @@ local function formatTime(seconds)
     return string.format('%dm %ds', mins, secs)
 end
 
-local function getDailyInfo()
-    local itemData = DailyRewardsModule:GetItemData()
-    local challenge = itemData.challenge
-    local challengeType = challenge[1]
-    local target = challenge[2]
-    
-    local current = 0
-    local leaderstats = LocalPlayer:WaitForChild('leaderstats')
-    
-    if challengeType == 'Eggs' then current = leaderstats['Eggs Opened'].Value
-    elseif challengeType == 'Gems' then current = leaderstats.Gems.Value
-    elseif challengeType == 'Coins' then current = leaderstats.Coins.Value
-    elseif challengeType == 'Bubbles' then current = leaderstats['Bubbles Blown'].Value
-    elseif challengeType == 'Legendaries' then current = math.min(leaderstats['Eggs Opened'].Value, target) end
-    
-    local timeUntil = DailyRewardsModule:GetTimeUntilTomorrow()
-    
-    if current >= target then
-        return string.format('Done! Next in %s', formatTime(timeUntil))
-    else
-        return string.format('Quest: %s %d/%d', challengeType, current, target)
-    end
-end
-
 local function getGroupInfo()
     local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
     if not ScreenGui then return '...' end
@@ -150,8 +124,42 @@ local function getGroupInfo()
             end
         end
     end
-    
     return 'Ready'
+end
+
+local function getDailyInfo()
+    local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
+    if not ScreenGui then return '...' end
+    local frame = ScreenGui:FindFirstChild('DailyRewards')
+    
+    if frame then
+        local category = ''
+        local progress = ''
+        local nextReward = ''
+        local claimed = false
+        
+        for _, d in ipairs(frame:GetDescendants()) do
+            if d:IsA('TextLabel') then
+                if d.Name == 'Category' and d.Text ~= '' then category = d.Text end
+                if d.Text:find('%d+ %/ %d+') then progress = d.Text end
+                if d.Name == 'NextRewardIn' then nextReward = d.Text end
+                if d.Name == 'Amount' and (d.Text == 'Claimed reward!' or d.Text == 'Claim reward') then
+                    claimed = (d.Text == 'Claimed reward!')
+                end
+            end
+        end
+        
+        if claimed and nextReward ~= '' then
+            local timeText = nextReward:gsub('Next reward in ', '')
+            return 'Done! Next in ' .. timeText
+        elseif category ~= '' and progress ~= '' then
+            return category .. ' [' .. progress .. ']'
+        elseif category ~= '' then
+            return category
+        end
+    end
+    
+    return '...'
 end
 
 local function collectGroupReward()
