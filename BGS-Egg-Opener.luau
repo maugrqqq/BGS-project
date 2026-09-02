@@ -254,8 +254,9 @@ local function canClaimDaily()
     local currentStr = progress:match('([%d,]+)')
     local targetStr = progress:match('/(%s*[%d,]+)')
     if not currentStr or not targetStr then return false end
-    local current = tonumber(currentStr:gsub(',', '')) or 0
-    local target = tonumber(targetStr:gsub(',', '')) or 0
+    local current = tonumber(string.gsub(currentStr, ',', ''), 10)
+    local target = tonumber(string.gsub(targetStr, ',', ''), 10)
+    if not current or not target then return false end
     return current >= target
 end
 local function collectGroupReward()
