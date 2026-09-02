@@ -54,8 +54,8 @@ local eggList = {}
 if eggsFolder then for _, child in ipairs(eggsFolder:GetChildren()) do if child:IsA('Model') and child.Name:find('Egg') then table.insert(eggList, child.Name) end end end
 table.sort(eggList) if #eggList == 0 then eggList = {'Common Egg','Spotted Egg','Hacker Egg'} end
 
-local groupSeconds = 0
-local dailyText = '...'
+local groupSeconds = -1 -- -1 значит ещё не прочитано
+local dailyText = 'Loading...'
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local GROUP_REFRESH_INTERVAL = 30
@@ -88,31 +88,36 @@ local function formatTime(seconds)
 end
 
 local function readGroupSeconds()
-    pcall(function() GuiService:ShowGroupBenefits() end)
-    for attempt = 1, 6 do
-        wait(0.4)
+    -- Повторяем до 12 секунд, пока не прочитаем текст
+    local deadline = os.clock() + 12
+    repeat
+        pcall(function() GuiService:ShowGroupBenefits() end)
+        wait(0.5)
         local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
         if problemFrame then
             for _, d in ipairs(problemFrame:GetDescendants()) do
                 if d:IsA('TextLabel') and d.Name == 'Desc' and d.Text ~= '' then
                     local text = d.Text
-                    local hours = text:match('(%d+)h') or 0
-                    local mins = text:match('(%d+)m') or 0
-                    local secs = text:match('(%d+)s') or 0
-                    local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
-                    problemFrame.Visible = false
-                    return total
+                    if text:find('Come back in') then
+                        local hours = text:match('(%d+)h') or 0
+                        local mins = text:match('(%d+)m') or 0
+                        local secs = text:match('(%d+)s') or 0
+                        local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
+                        problemFrame.Visible = false
+                        return total
+                    end
                 end
             end
         end
-    end
-    return 0
+    until os.clock() >= deadline
+    return -1
 end
 
 local function readDailyText()
-    pcall(function() GuiService:DisplayFrame('DailyRewards') end)
-    for attempt = 1, 6 do
-        wait(0.4)
+    local deadline = os.clock() + 8
+    repeat
+        pcall(function() GuiService:DisplayFrame('DailyRewards') end)
+        wait(0.5)
         local frame = ScreenGui:FindFirstChild('DailyRewards')
         if frame then
             local category, progress, nextReward, claimed = '', '', '', false
@@ -131,7 +136,7 @@ local function readDailyText()
             pcall(function() GuiService:DisplayFrame('') end)
             return result
         end
-    end
+    until os.clock() >= deadline
     pcall(function() GuiService:DisplayFrame('') end)
     return '...'
 end
@@ -209,10 +214,9 @@ if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
 task.spawn(function()
-    wait(1)
     groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
     dailyText = readDailyText() lastDailyRefresh = os.clock()
-    GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or 'Ready')
+    GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
     DailyLabel:Set(dailyText)
 end)
 
@@ -221,7 +225,8 @@ task.spawn(function()
     while true do
         local now = os.clock() local delta = now - lastTick lastTick = now
         if groupSeconds > 0 then groupSeconds = math.max(0, groupSeconds - delta) end
-        if groupSeconds <= 0 then GroupLabel:Set('Ready') if autoGroupBenefits then collectGroupReward() end
+        if groupSeconds == 0 then GroupLabel:Set('Ready') if autoGroupBenefits then collectGroupReward() end
+        elseif groupSeconds < 0 then GroupLabel:Set('Loading...')
         else GroupLabel:Set(formatTime(groupSeconds)) end
         if now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then groupSeconds = readGroupSeconds() lastGroupRefresh = now end
         if now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then dailyText = readDailyText() lastDailyRefresh = now end
