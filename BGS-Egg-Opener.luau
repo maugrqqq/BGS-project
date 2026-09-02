@@ -212,28 +212,28 @@ local DailyLabel = TasksTab:CreateLabel('Loading...')
 if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
-task.spawn(function()
-    wait(2)
-    groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
-    dailyText = readDailyText() lastDailyRefresh = os.clock()
-    GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
-    DailyLabel:Set(dailyText)
-end)
+wait(2)
+groupSeconds = readGroupSeconds()
+lastGroupRefresh = os.clock()
+dailyText = readDailyText()
+lastDailyRefresh = os.clock()
+GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
+DailyLabel:Set(dailyText)
 
-task.spawn(function()
-    local lastTick = os.clock()
-    while true do
-        local now = os.clock() local delta = now - lastTick lastTick = now
-        if groupSeconds > 0 then groupSeconds = math.max(0, groupSeconds - delta) end
-        if groupSeconds == 0 then GroupLabel:Set('Ready') if autoGroupBenefits then collectGroupReward() end
-        elseif groupSeconds < 0 then GroupLabel:Set('Loading...')
-        else GroupLabel:Set(formatTime(groupSeconds)) end
-        if now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then groupSeconds = readGroupSeconds() lastGroupRefresh = now end
-        if now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then dailyText = readDailyText() lastDailyRefresh = now end
-        DailyLabel:Set(dailyText)
-        if autoDailyRewards and canClaimDaily() then claimDaily() end
-        if autoHatchEnabled then hatchEgg() end
-        if autoSpinToWin then spinToWin() end
-        wait(0.2)
-    end
-end)
+local lastTick = os.clock()
+while true do
+    local now = os.clock()
+    local delta = now - lastTick
+    lastTick = now
+    if groupSeconds > 0 then groupSeconds = math.max(0, groupSeconds - delta) end
+    if groupSeconds == 0 then GroupLabel:Set('Ready') if autoGroupBenefits then collectGroupReward() end
+    elseif groupSeconds < 0 then GroupLabel:Set('Loading...')
+    else GroupLabel:Set(formatTime(groupSeconds)) end
+    if now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then groupSeconds = readGroupSeconds() lastGroupRefresh = now end
+    if now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then dailyText = readDailyText() lastDailyRefresh = now end
+    DailyLabel:Set(dailyText)
+    if autoDailyRewards and canClaimDaily() then claimDaily() end
+    if autoHatchEnabled then hatchEgg() end
+    if autoSpinToWin then spinToWin() end
+    wait(0.2)
+end
