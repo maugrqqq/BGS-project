@@ -54,7 +54,7 @@ local eggList = {}
 if eggsFolder then for _, child in ipairs(eggsFolder:GetChildren()) do if child:IsA('Model') and child.Name:find('Egg') then table.insert(eggList, child.Name) end end end
 table.sort(eggList) if #eggList == 0 then eggList = {'Common Egg','Spotted Egg','Hacker Egg'} end
 
-local groupSeconds = -1 -- -1 значит ещё не прочитано
+local groupSeconds = -1
 local dailyText = 'Loading...'
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
@@ -88,7 +88,6 @@ local function formatTime(seconds)
 end
 
 local function readGroupSeconds()
-    -- Повторяем до 12 секунд, пока не прочитаем текст
     local deadline = os.clock() + 12
     repeat
         pcall(function() GuiService:ShowGroupBenefits() end)
@@ -214,6 +213,7 @@ if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
 task.spawn(function()
+    wait(2)
     groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
     dailyText = readDailyText() lastDailyRefresh = os.clock()
     GroupLabel:Set(groupSeconds > 0 and formatTime(groupSeconds) or (groupSeconds == 0 and 'Ready' or 'Loading...'))
