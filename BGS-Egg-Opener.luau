@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v9
--- Разделены тумблеры: Open Selected Egg (открытие) и Teleport To Egg (телепортация)
+-- BGS Egg Opener - Fixed v10
+-- Телепорт: 1 секунда затем стоп. Синхронизация: раз в 90 секунд
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -97,7 +97,7 @@ local spinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local lastSpinRefresh = 0
-local SYNC_INTERVAL = 30
+local SYNC_INTERVAL = 90 -- 1.5 минуты
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
@@ -107,19 +107,24 @@ local function getEggPosition()
     if not primary then return nil end
     return primary.Position
 end
+
+-- Телепорт: один раз на 1 секунду, затем остановка
 local teleportLoop = nil
-local function startTeleportLoop()
-    if teleportLoop then return end
-    teleportLoop = RunService.RenderStepped:Connect(function()
-        local char = getCharacter() local root = char:FindFirstChild('HumanoidRootPart')
-        if not root then return end
-        local eggPos = getEggPosition()
-        if eggPos then root.CFrame = CFrame.new(eggPos + Vector3.new(0, 10, 0)) end
-    end)
+local function teleportOnce()
+    local char = getCharacter()
+    local root = char:FindFirstChild('HumanoidRootPart')
+    if not root then return end
+    local eggPos = getEggPosition()
+    if eggPos then
+        root.CFrame = CFrame.new(eggPos + Vector3.new(0, 10, 0))
+    end
 end
-local function stopTeleportLoop()
-    if teleportLoop then teleportLoop:Disconnect() teleportLoop = nil end
+local function startTeleportOnce()
+    teleportOnce()
+    wait(1)
+    teleportOnce()
 end
+
 local function hatchEgg() pcall(function() Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled) end) end
 local function formatTime(seconds)
     local h = math.floor(seconds / 3600) local m = math.floor((seconds % 3600) / 60) local s = math.floor(seconds % 60)
@@ -284,9 +289,9 @@ MainTab:CreateToggle({Name='Open Selected Egg', CurrentValue=autoHatchEnabled, C
 MainTab:CreateToggle({Name='Teleport To Egg', CurrentValue=teleportEnabled, Callback=function(v)
     teleportEnabled = v
     if v then
-        startTeleportLoop()
-    else
-        stopTeleportLoop()
+        task.spawn(function()
+            startTeleportOnce()
+        end)
     end
     saveCurrent()
 end})
@@ -361,7 +366,11 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
-if teleportEnabled then startTeleportLoop() end
+if teleportEnabled then
+    task.spawn(function()
+        startTeleportOnce()
+    end)
+end
 if eventsEnabled then enableEvents() end
 
 -- Начальная загрузка только если тумблеры включены
@@ -453,7 +462,7 @@ while true do
         end
     end
 
-    -- Реальная синхронизация всех трёх раз в 30 секунд
+    -- Реальная синхронизация всех трёх раз в 90 секунд
     if now - lastGroupRefresh >= SYNC_INTERVAL then
         if autoGroupBenefits then
             task.spawn(function()
