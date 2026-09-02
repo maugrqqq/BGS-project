@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v14
--- Исправлено: Eggs Opened вместо Egg Hatches, UI переупорядочен
+-- BGS Egg Opener - Fixed v15
+-- Добавлен Alien Spin To Win с таймером
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -65,6 +65,7 @@ local eventsEnabled = config.eventsEnabled or false
 local autoGroupBenefits = config.autoGroupBenefits or false
 local autoSpinToWin = config.autoSpinToWin or false
 local autoDailyRewards = config.autoDailyRewards or false
+local autoAlienSpinToWin = config.autoAlienSpinToWin or false
 
 local LocalPlayer = game.Players.LocalPlayer
 local Workspace = game:GetService('Workspace')
@@ -84,9 +85,11 @@ local groupSeconds = -1
 local dailyText = 'Off'
 local dailySeconds = -1
 local spinSeconds = -1
+local alienSpinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local lastSpinRefresh = 0
+local lastAlienSpinRefresh = 0
 local SYNC_INTERVAL = 90
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
@@ -211,6 +214,17 @@ local function readSpinSeconds()
     return math.max(0, secondsLeft)
 end
 
+local function readAlienSpinSeconds()
+    local alienSpin = ScreenGui:FindFirstChild('AlienSpinToWin')
+    if not alienSpin then return -1 end
+    local timeRemaining = alienSpin:FindFirstChild('TimeRemaining', true)
+    if timeRemaining and timeRemaining:IsA('TextLabel') then
+        if not timeRemaining.Visible then return 0 end
+        return parseTimeFromText(timeRemaining.Text)
+    end
+    return -1
+end
+
 local function canClaimDaily()
     if not dailyText or dailyText == '...' or dailyText == 'Off' then return false end
     if dailyText:find('Next in') then return false end
@@ -230,6 +244,7 @@ local function collectGroupReward()
     lastGroupRefresh = os.clock()
 end
 local function spinToWin() pcall(function() Event:FireServer('SpinToWin') end) end
+local function alienSpinToWin() pcall(function() Event:FireServer('AlienSpinToWin') end) end
 local function claimDaily()
     pcall(function() Event:FireServer('ClaimDailyReward') end)
     wait(0.5)
@@ -260,7 +275,8 @@ local function saveCurrent()
     saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
-        autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards})
+        autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
+        autoAlienSpinToWin=autoAlienSpinToWin})
 end
 
 NetworkRemoteEvent.OnClientEvent:Connect(function(eventName, ...)
@@ -309,7 +325,6 @@ WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Cal
 WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
 
--- Auto Group Benefits
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v)
     autoGroupBenefits = v saveCurrent()
     if v then
@@ -323,7 +338,6 @@ TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefit
 end})
 local GroupLabel = TasksTab:CreateLabel('Off')
 
--- Auto Spin To Win
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v)
     autoSpinToWin = v saveCurrent()
     if v then
@@ -337,7 +351,19 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
 
--- Auto Daily Rewards
+TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpinToWin, Callback=function(v)
+    autoAlienSpinToWin = v saveCurrent()
+    if v then
+        safeSet(AlienSpinLabel, 'Loading...')
+        task.spawn(function()
+            alienSpinSeconds = readAlienSpinSeconds() lastAlienSpinRefresh = os.clock()
+            if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds))
+            elseif alienSpinSeconds == 0 then safeSet(AlienSpinLabel, 'Ready') else safeSet(AlienSpinLabel, 'Loading...') end
+        end)
+    else safeSet(AlienSpinLabel, 'Off') end
+end})
+local AlienSpinLabel = TasksTab:CreateLabel('Off')
+
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
     autoDailyRewards = v saveCurrent()
     if v then
@@ -366,6 +392,13 @@ if autoSpinToWin then
         elseif spinSeconds == 0 then safeSet(SpinLabel, 'Ready') else safeSet(SpinLabel, 'Loading...') end
     end)
 end
+if autoAlienSpinToWin then
+    safeSet(AlienSpinLabel, 'Loading...')
+    task.spawn(function() alienSpinSeconds = readAlienSpinSeconds() lastAlienSpinRefresh = os.clock()
+        if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds))
+        elseif alienSpinSeconds == 0 then safeSet(AlienSpinLabel, 'Ready') else safeSet(AlienSpinLabel, 'Loading...') end
+    end)
+end
 if autoDailyRewards then
     safeSet(DailyLabel, 'Loading...')
     task.spawn(function() dailyText = readDailyText() lastDailyRefresh = os.clock() safeSet(DailyLabel, dailyText) end)
@@ -381,7 +414,6 @@ while true do
     local delta = now - lastTick
     lastTick = now
 
-    -- Hatching Stalled логика
     if autoHatchEnabled and teleportEnabled and teleportMode == 'Hatching Stalled' then
         local currentEggsOpened = getEggsOpened()
         if lastEggsOpened == -1 then
@@ -398,7 +430,6 @@ while true do
         lastEggsOpened = -1
     end
 
-    -- Искусственный таймер для group
     if autoGroupBenefits then
         if groupSeconds > 0 then
             groupSeconds = math.max(0, groupSeconds - delta)
@@ -407,7 +438,6 @@ while true do
         elseif groupSeconds == 0 then safeSet(GroupLabel, 'Ready') end
     end
 
-    -- Искусственный таймер для spin
     if autoSpinToWin then
         if spinSeconds > 0 then
             spinSeconds = math.max(0, spinSeconds - delta)
@@ -416,7 +446,14 @@ while true do
         elseif spinSeconds == 0 then safeSet(SpinLabel, 'Ready') end
     end
 
-    -- Искусственный таймер для daily
+    if autoAlienSpinToWin then
+        if alienSpinSeconds > 0 then
+            alienSpinSeconds = math.max(0, alienSpinSeconds - delta)
+            if alienSpinSeconds <= 0 then safeSet(AlienSpinLabel, 'Ready') alienSpinToWin()
+            else safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds)) end
+        elseif alienSpinSeconds == 0 then safeSet(AlienSpinLabel, 'Ready') end
+    end
+
     if autoDailyRewards then
         if dailySeconds > 0 then
             dailySeconds = math.max(0, dailySeconds - delta)
@@ -425,7 +462,6 @@ while true do
         end
     end
 
-    -- Синхронизация раз в 90 секунд
     if now - lastGroupRefresh >= SYNC_INTERVAL then
         if autoGroupBenefits then
             task.spawn(function() groupSeconds = readGroupSeconds() lastGroupRefresh = os.clock()
@@ -437,6 +473,13 @@ while true do
         if autoSpinToWin then
             task.spawn(function() spinSeconds = readSpinSeconds() lastSpinRefresh = os.clock()
                 if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds)) end
+            end)
+        end
+    end
+    if now - lastAlienSpinRefresh >= SYNC_INTERVAL then
+        if autoAlienSpinToWin then
+            task.spawn(function() alienSpinSeconds = readAlienSpinSeconds() lastAlienSpinRefresh = os.clock()
+                if alienSpinSeconds > 0 then safeSet(AlienSpinLabel, 'Next in ' .. formatTime(alienSpinSeconds)) end
             end)
         end
     end
