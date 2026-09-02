@@ -1,5 +1,5 @@
--- BGS Egg Opener - Fixed v7
--- Исправлены таймеры: Next in для Group/Daily, правильный SpinToWin через os.time()
+-- BGS Egg Opener - Fixed v8
+-- Тайминги синхронизации ровно 30 секунд для всех трёх
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -96,9 +96,7 @@ local spinSeconds = -1
 local lastGroupRefresh = 0
 local lastDailyRefresh = 0
 local lastSpinRefresh = 0
-local GROUP_REFRESH_INTERVAL = 30
-local DAILY_REFRESH_INTERVAL = 30
-local SPIN_REFRESH_INTERVAL = 30
+local SYNC_INTERVAL = 30 -- Единый интервал 30 секунд для всех
 
 local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
@@ -446,31 +444,35 @@ while true do
         end
     end
 
-    -- Реальная синхронизация group раз в 30 секунд
-    if autoGroupBenefits and now - lastGroupRefresh >= GROUP_REFRESH_INTERVAL then
-        task.spawn(function()
-            groupSeconds = readGroupSeconds()
-            lastGroupRefresh = os.clock()
-            if groupSeconds > 0 then safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds)) end
-        end)
+    -- Реальная синхронизация всех трёх раз в 30 секунд
+    if now - lastGroupRefresh >= SYNC_INTERVAL then
+        if autoGroupBenefits then
+            task.spawn(function()
+                groupSeconds = readGroupSeconds()
+                lastGroupRefresh = os.clock()
+                if groupSeconds > 0 then safeSet(GroupLabel, 'Next in ' .. formatTime(groupSeconds)) end
+            end)
+        end
     end
 
-    -- Реальная синхронизация spin раз в 30 секунд
-    if autoSpinToWin and now - lastSpinRefresh >= SPIN_REFRESH_INTERVAL then
-        task.spawn(function()
-            spinSeconds = readSpinSeconds()
-            lastSpinRefresh = os.clock()
-            if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds)) end
-        end)
+    if now - lastSpinRefresh >= SYNC_INTERVAL then
+        if autoSpinToWin then
+            task.spawn(function()
+                spinSeconds = readSpinSeconds()
+                lastSpinRefresh = os.clock()
+                if spinSeconds > 0 then safeSet(SpinLabel, 'Next in ' .. formatTime(spinSeconds)) end
+            end)
+        end
     end
 
-    -- Реальная синхронизация daily раз в 30 секунд
-    if autoDailyRewards and now - lastDailyRefresh >= DAILY_REFRESH_INTERVAL then
-        task.spawn(function()
-            dailyText = readDailyText()
-            lastDailyRefresh = os.clock()
-            safeSet(DailyLabel, dailyText)
-        end)
+    if now - lastDailyRefresh >= SYNC_INTERVAL then
+        if autoDailyRewards then
+            task.spawn(function()
+                dailyText = readDailyText()
+                lastDailyRefresh = os.clock()
+                safeSet(DailyLabel, dailyText)
+            end)
+        end
     end
 
     if autoDailyRewards and canClaimDaily() then
