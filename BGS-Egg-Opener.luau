@@ -6,6 +6,7 @@ local Rayfield = loadstring(RayfieldSrc)()
 
 local CONFIG_FILE = 'BGS_Egg_Opener_Config.json'
 local HttpService = game:GetService('HttpService')
+
 local function loadConfig()
     local success, data = pcall(function()
         if isfile(CONFIG_FILE) then return HttpService:JSONDecode(readfile(CONFIG_FILE)) end
@@ -14,7 +15,9 @@ local function loadConfig()
     if success then return data end
     return {}
 end
-local function saveConfig(cfg) pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(cfg)) end) end
+local function saveConfig(cfg)
+    pcall(function() writefile(CONFIG_FILE, HttpService:JSONEncode(cfg)) end)
+end
 local config = loadConfig()
 
 task.spawn(function()
@@ -52,6 +55,7 @@ local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 local RunService = game:GetService('RunService')
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
 local GuiService = Services:GetService('GuiService')
+local ScreenGui = LocalPlayer.PlayerGui:WaitForChild('ScreenGui', 10)
 
 local eggsFolder = Workspace:FindFirstChild('Eggs')
 local eggList = {}
@@ -63,18 +67,17 @@ end
 table.sort(eggList)
 if #eggList == 0 then eggList = {'Common Egg', 'Spotted Egg', 'Hacker Egg'} end
 
-local groupTimerSeconds = 0
-local groupLastRefresh = 0
-local localCountdown = 0
+local groupSeconds = 0
+local dailyText = '...'
+local lastGroupRefresh = 0
+local lastDailyRefresh = 0
+local GROUP_REFRESH = 30
+local DAILY_REFRESH = 10
 
-local dailyProgress = ''
-local dailyCategory = ''
-local dailyClaimed = false
-local dailyNextReward = ''
-local dailyLastRefresh = 0
-local DAILY_REFRESH_INTERVAL = 10
+local function getCharacter()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
 
-local function getCharacter() return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() end
 local function getEggPosition()
     local eggModel = eggsFolder and eggsFolder:FindFirstChild(selectedEgg)
     if not eggModel then return nil end
@@ -82,6 +85,7 @@ local function getEggPosition()
     if not primary then return nil end
     return primary.Position
 end
+
 local teleportLoop = nil
 local function startTeleportLoop()
     if teleportLoop then return end
@@ -96,26 +100,22 @@ end
 local function stopTeleportLoop()
     if teleportLoop then teleportLoop:Disconnect() teleportLoop = nil end
 end
-local function hatchEgg() pcall(function() Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled) end) end
+
+local function hatchEgg()
+    pcall(function() Event:FireServer('PurchaseEgg', selectedEgg, tripleHatchEnabled) end)
+end
+
 local function formatTime(seconds)
-    local hours = math.floor(seconds / 3600)
-    local mins = math.floor((seconds % 3600) / 60)
-    local secs = math.floor(seconds % 60)
-    if hours > 0 then return string.format('%dh %dm %ds', hours, mins, secs) end
-    return string.format('%dm %ds', mins, secs)
+    local h = math.floor(seconds / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    local s = math.floor(seconds % 60)
+    if h > 0 then return string.format('%dh %dm %ds', h, m, s) end
+    return string.format('%dm %ds', m, s)
 end
-local function hideGroupFrames()
-    local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
-    if not ScreenGui then return end
-    local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
-    if problemFrame then problemFrame.Visible = false end
-    local rewardFrame = ScreenGui:FindFirstChild('GroupBenefitsReward')
-    if rewardFrame then rewardFrame.Visible = false end
-end
-local function refreshGroupTimer()
+
+local function readGroupSeconds()
     pcall(function() GuiService:ShowGroupBenefits() end)
-    local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
-    if not ScreenGui then return 0 end
+    wait(0.2)
     local problemFrame = ScreenGui:FindFirstChild('GroupBenefitsProblem')
     if problemFrame then
         for _, d in ipairs(problemFrame:GetDescendants()) do
@@ -125,21 +125,19 @@ local function refreshGroupTimer()
                 local mins = text:match('(%d+)m') or 0
                 local secs = text:match('(%d+)s') or 0
                 local total = tonumber(hours) * 3600 + tonumber(mins) * 60 + tonumber(secs)
-                hideGroupFrames()
+                problemFrame.Visible = false
                 return total
             end
         end
     end
-    hideGroupFrames()
     return 0
 end
 
-local function refreshDaily()
+local function readDailyText()
     pcall(function() GuiService:DisplayFrame('DailyRewards') end)
-    wait(0.3)
-    local ScreenGui = LocalPlayer.PlayerGui:FindFirstChild('ScreenGui')
-    if not ScreenGui then return end
+    wait(0.2)
     local frame = ScreenGui:FindFirstChild('DailyRewards')
+    local result = '...'
     if frame then
         local category = ''
         local progress = ''
@@ -153,34 +151,25 @@ local function refreshDaily()
                 if d.Text == 'Claimed reward!' then claimed = true end
             end
         end
-        dailyCategory = category
-        dailyProgress = progress
-        dailyNextReward = nextReward
-        dailyClaimed = claimed
+        if claimed and nextReward ~= '' then
+            result = 'Done! Next in ' .. nextReward:gsub('Next reward in ', '')
+        elseif category ~= '' and progress ~= '' then
+            result = category .. ' [' .. progress .. ']'
+        elseif category ~= '' then
+            result = category
+        end
     end
     pcall(function() GuiService:DisplayFrame('') end)
-    dailyLastRefresh = os.clock()
-end
-
-local function getDailyInfo()
-    if os.clock() - dailyLastRefresh > DAILY_REFRESH_INTERVAL then
-        refreshDaily()
-    end
-    
-    if dailyClaimed and dailyNextReward ~= '' then
-        return 'Done! Next in ' .. dailyNextReward:gsub('Next reward in ', '')
-    elseif dailyCategory ~= '' and dailyProgress ~= '' then
-        return dailyCategory .. ' [' .. dailyProgress .. ']'
-    elseif dailyCategory ~= '' then
-        return dailyCategory
-    end
-    return '...'
+    return result
 end
 
 local function canClaimDaily()
-    if dailyProgress == '' then return false end
-    local currentStr = dailyProgress:match('([%d,]+)')
-    local targetStr = dailyProgress:match('/(%s*[%d,]+)')
+    if not dailyText or dailyText == '...' then return false end
+    if dailyText:find('Done!') then return false end
+    local progress = dailyText:match('%[(.-)%]')
+    if not progress then return false end
+    local currentStr = progress:match('([%d,]+)')
+    local targetStr = progress:match('/(%s*[%d,]+)')
     if not currentStr or not targetStr then return false end
     local current = tonumber(currentStr:gsub(',', '')) or 0
     local target = tonumber(targetStr:gsub(',', '')) or 0
@@ -190,11 +179,20 @@ end
 local function collectGroupReward()
     pcall(function() Event:FireServer('CollectGroupReward') end)
     wait(0.5)
-    local fresh = refreshGroupTimer()
-    localCountdown = fresh > 0 and fresh or 0
+    groupSeconds = readGroupSeconds()
+    lastGroupRefresh = os.clock()
 end
-local function spinToWin() pcall(function() Event:FireServer('SpinToWin') end) end
-local function claimDaily() pcall(function() Event:FireServer('ClaimDailyReward') end) end
+
+local function spinToWin()
+    pcall(function() Event:FireServer('SpinToWin') end)
+end
+
+local function claimDaily()
+    pcall(function() Event:FireServer('ClaimDailyReward') end)
+    wait(0.5)
+    dailyText = readDailyText()
+    lastDailyRefresh = os.clock()
+end
 
 local function enableEvents()
     local WeekendEventSchedule = require(game.ReplicatedStorage.Assets.Modules.WeekendEventSchedule)
@@ -212,10 +210,12 @@ local function disableEvents()
     pcall(function() debug.setupvalue(Is2xShiny, 1, false) end)
     pcall(function() debug.setupvalue(Is2xMythic, 1, false) end)
 end
+
 local function sendWebhook(message)
     if not webhookEnabled or webhookURL == '' then return end
     pcall(function() HttpService:PostAsync(webhookURL, HttpService:JSONEncode({content = message})) end)
 end
+
 local function saveCurrent()
     saveConfig({
         selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
@@ -247,48 +247,52 @@ WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com
 
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v) autoGroupBenefits = v saveCurrent() end})
-local GroupLabel = TasksTab:CreateLabel('Ready')
+local GroupLabel = TasksTab:CreateLabel('Loading...')
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v) autoSpinToWin = v saveCurrent() end})
 local SpinLabel = TasksTab:CreateLabel('Ready')
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v) autoDailyRewards = v saveCurrent() end})
-local DailyLabel = TasksTab:CreateLabel('...')
+local DailyLabel = TasksTab:CreateLabel('Loading...')
 
 if autoHatchEnabled then startTeleportLoop() end
 if eventsEnabled then enableEvents() end
 
-refreshGroupTimer()
-refreshDaily()
-local lastTick = os.clock()
+groupSeconds = readGroupSeconds()
+lastGroupRefresh = os.clock()
+dailyText = readDailyText()
+lastDailyRefresh = os.clock()
 
 task.spawn(function()
+    local lastTick = os.clock()
     while true do
         local now = os.clock()
         local delta = now - lastTick
         lastTick = now
         
-        if localCountdown > 0 then
-            localCountdown = math.max(0, localCountdown - delta)
-            GroupLabel:Set(formatTime(localCountdown))
-        else
+        if groupSeconds > 0 then
+            groupSeconds = math.max(0, groupSeconds - delta)
+        end
+        if groupSeconds <= 0 then
             GroupLabel:Set('Ready')
+            if autoGroupBenefits then
+                collectGroupReward()
+            end
+        else
+            GroupLabel:Set(formatTime(groupSeconds))
+        end
+        
+        if now - lastDailyRefresh >= DAILY_REFRESH then
+            dailyText = readDailyText()
+            lastDailyRefresh = now
+        end
+        DailyLabel:Set(dailyText)
+        
+        if autoDailyRewards and canClaimDaily() then
+            claimDaily()
         end
         
         if autoHatchEnabled then hatchEgg() end
-        
-        if autoGroupBenefits and localCountdown <= 0 then
-            collectGroupReward()
-        end
-        
         if autoSpinToWin then spinToWin() end
         
-        if autoDailyRewards then
-            if canClaimDaily() and not dailyClaimed then
-                claimDaily()
-                refreshDaily()
-            end
-            DailyLabel:Set(getDailyInfo())
-        end
-        
-        wait(0.1)
+        wait(0.2)
     end
 end)
