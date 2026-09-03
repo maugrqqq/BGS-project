@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v23
+-- BGS Egg Opener - Fixed v24
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow Toggle at top, WalkSpeed (24) and JumpPower (70) editable
+-- Misc tab: Auto Blow Toggle, Discover Islands, WalkSpeed and JumpPower
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -10,6 +10,7 @@ local ScreenGui = game.Players.LocalPlayer.PlayerGui:WaitForChild('ScreenGui', 1
 local HttpService = game:GetService('HttpService')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 local TextChatService = game:GetService('TextChatService')
+local TweenService = game:GetService('TweenService')
 
 local function safeSet(label, text)
     if not label then return end
@@ -422,6 +423,51 @@ pcall(function()
     end
 end)
 
+local function discoverIslands()
+    task.spawn(function()
+        local char = getCharacter()
+        local hrp = char:FindFirstChild('HumanoidRootPart')
+        if not hrp then return end
+        local originalCFrame = hrp.CFrame
+        local checkpoints = Workspace:FindFirstChild('Checkpoints')
+        local floatingIslands = Workspace:FindFirstChild('FloatingIslands')
+        if not checkpoints or not floatingIslands then return end
+        local redDoors = {}
+        for _, island in ipairs(checkpoints:GetChildren()) do
+            local door = island:FindFirstChild('Door')
+            if door and door:IsA('BasePart') then
+                local c = door.Color
+                if c.R > 0.9 and c.G < 0.1 and c.B < 0.1 then
+                    table.insert(redDoors, island.Name)
+                end
+            end
+        end
+        for _, islandName in ipairs(redDoors) do
+            local targetIsland = nil
+            for _, world in ipairs(floatingIslands:GetChildren()) do
+                local found = world:FindFirstChild(islandName)
+                if found then
+                    targetIsland = found
+                    break
+                end
+            end
+            if targetIsland then
+                local targetPos = targetIsland:GetPivot().Position
+                local targetCFrame = CFrame.new(targetPos)
+                hrp.CFrame = targetCFrame
+                wait(0.2)
+                local downPos = targetPos - Vector3.new(0, 200, 0)
+                local tween = TweenService:Create(hrp, TweenInfo.new(3, Enum.EasingStyle.Linear), {CFrame = CFrame.new(downPos)})
+                tween:Play()
+                tween.Completed:Wait()
+                wait(0.2)
+                hrp.CFrame = originalCFrame
+                wait(0.2)
+            end
+        end
+    end)
+end
+
 local function saveCurrent()
     saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
@@ -524,6 +570,9 @@ local DailyLabel = TasksTab:CreateLabel('Off')
 
 MiscTab:CreateParagraph({Title='Auto Blow', Content='Blow bubbles every 0.5 seconds'})
 MiscTab:CreateToggle({Name='Auto Blow', CurrentValue=autoBlowEnabled, Callback=function(v) autoBlowEnabled = v saveCurrent() end})
+
+MiscTab:CreateParagraph({Title='Discovery', Content='Visit all red-door islands'})
+MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
 
 MiscTab:CreateParagraph({Title='Character', Content='Change WalkSpeed and JumpPower'})
 MiscTab:CreateInput({Name='WalkSpeed', PlaceholderText='24', RemoveTextAfterFocusLost=false, Callback=function(text)
