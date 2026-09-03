@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v25
+-- BGS Egg Opener - Fixed v26
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow Toggle, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow Toggle, Farm Pickups, Discover Islands, WalkSpeed and JumpPower
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -73,6 +73,7 @@ local autoSpinToWin = config.autoSpinToWin or false
 local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
 local autoBlowEnabled = false
+local farmPickupsEnabled = false
 local moveSpeed = 24
 local jumpHeight = 70
 
@@ -469,15 +470,49 @@ local function discoverIslands()
     end)
 end
 
+local function farmPickups()
+    task.spawn(function()
+        while farmPickupsEnabled do
+            local char = getCharacter()
+            local hrp = char:FindFirstChild('HumanoidRootPart')
+            local humanoid = char:FindFirstChildOfClass('Humanoid')
+            if not hrp or not humanoid then wait(0.5) continue end
+            local pickupsFolder = Workspace:FindFirstChild('Pickups')
+            if not pickupsFolder then wait(0.5) continue end
+            local nearest = nil
+            local nearestDist = math.huge
+            for _, part in ipairs(pickupsFolder:GetDescendants()) do
+                if part:IsA('BasePart') and part.Name == 'Part' then
+                    local dist = (part.Position - hrp.Position).Magnitude
+                    if dist < nearestDist then
+                        nearestDist = dist
+                        nearest = part
+                    end
+                end
+            end
+            if nearest then
+                humanoid:MoveTo(nearest.Position)
+                humanoid.MoveToFinished:Wait()
+                wait(0.1)
+                hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0))
+                wait(0.2)
+            else
+                wait(0.5)
+            end
+        end
+    end)
+end
+
 local function saveCurrent()
     saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
-        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
+        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, farmPickupsEnabled=farmPickupsEnabled, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
 end
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
+MainTab:CreateDivider()
 MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt)
     selectedEgg = opt[1]
     if teleportEnabled then teleportToSelectedEgg() end
@@ -510,11 +545,14 @@ MainTab:CreateSlider({
     end
 })
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
+EventTab:CreateDivider()
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
-WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets to Discord'})
+WebhookTab:CreateParagraph({Title='Discord webhook', Content='Send legendary pet hatches into discord'})
+WebhookTab:CreateDivider()
 WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Callback=function(v) webhookEnabled = v saveCurrent() end})
 WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
+TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v)
     autoGroupBenefits = v saveCurrent()
@@ -528,6 +566,7 @@ TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefit
     else safeSet(GroupLabel, 'Off') end
 end})
 local GroupLabel = TasksTab:CreateLabel('Off')
+TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v)
     autoSpinToWin = v saveCurrent()
@@ -541,6 +580,7 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
     else safeSet(SpinLabel, 'Off') end
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
+TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpinToWin, Callback=function(v)
     autoAlienSpinToWin = v saveCurrent()
@@ -557,6 +597,7 @@ TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpin
     else safeSet(AlienSpinLabel, 'Off') end
 end})
 local AlienSpinLabel = TasksTab:CreateLabel('Off')
+TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
     autoDailyRewards = v saveCurrent()
@@ -569,12 +610,21 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
+MiscTab:CreateParagraph({Title='Game', Content='Auto blow bubbles, farm nearby pickups'})
+MiscTab:CreateDivider()
 MiscTab:CreateToggle({Name='Auto Blow', CurrentValue=autoBlowEnabled, Callback=function(v) autoBlowEnabled = v saveCurrent() end})
-
+MiscTab:CreateToggle({Name='Farm Pickups', CurrentValue=farmPickupsEnabled, Callback=function(v)
+    farmPickupsEnabled = v
+    if v then
+        farmPickups()
+    end
+    saveCurrent()
+end})
 MiscTab:CreateParagraph({Title='Discovery', Content='Teleport to all undiscovered floating islands'})
+MiscTab:CreateDivider()
 MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
-
-MiscTab:CreateParagraph({Title='Character', Content=''})
+MiscTab:CreateParagraph({Title='Character', Content='Movement'})
+MiscTab:CreateDivider()
 MiscTab:CreateInput({Name='WalkSpeed', PlaceholderText='24', RemoveTextAfterFocusLost=false, Callback=function(text)
     local num = tonumber(text)
     if num then
