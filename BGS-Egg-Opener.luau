@@ -1,4 +1,4 @@
--- BGS Egg Opener - Fixed v24
+-- BGS Egg Opener - Fixed v25
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
 -- Misc tab: Auto Blow Toggle, Discover Islands, WalkSpeed and JumpPower
@@ -111,6 +111,7 @@ local function getEggPosition()
 end
 
 local function teleportToSelectedEgg()
+    if not autoHatchEnabled then return end
     local eggPos = getEggPosition()
     if not eggPos then return end
     local char = getCharacter()
@@ -456,8 +457,8 @@ local function discoverIslands()
                 local targetCFrame = CFrame.new(targetPos)
                 hrp.CFrame = targetCFrame
                 wait(0.2)
-                local downPos = targetPos - Vector3.new(0, 200, 0)
-                local tween = TweenService:Create(hrp, TweenInfo.new(3, Enum.EasingStyle.Linear), {CFrame = CFrame.new(downPos)})
+                local downPos = targetPos - Vector3.new(0, 50, 0)
+                local tween = TweenService:Create(hrp, TweenInfo.new(1, Enum.EasingStyle.Linear), {CFrame = CFrame.new(downPos)})
                 tween:Play()
                 tween.Completed:Wait()
                 wait(0.2)
@@ -568,13 +569,12 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
-MiscTab:CreateParagraph({Title='Auto Blow', Content='Blow bubbles every 0.5 seconds'})
 MiscTab:CreateToggle({Name='Auto Blow', CurrentValue=autoBlowEnabled, Callback=function(v) autoBlowEnabled = v saveCurrent() end})
 
-MiscTab:CreateParagraph({Title='Discovery', Content='Visit all red-door islands'})
+MiscTab:CreateParagraph({Title='Discovery', Content='Teleport to all undiscovered floating islands'})
 MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
 
-MiscTab:CreateParagraph({Title='Character', Content='Change WalkSpeed and JumpPower'})
+MiscTab:CreateParagraph({Title='Character', Content=''})
 MiscTab:CreateInput({Name='WalkSpeed', PlaceholderText='24', RemoveTextAfterFocusLost=false, Callback=function(text)
     local num = tonumber(text)
     if num then
@@ -600,7 +600,7 @@ MiscTab:CreateInput({Name='JumpPower', PlaceholderText='70', RemoveTextAfterFocu
     end
 end})
 
-if teleportEnabled then teleportToSelectedEgg() end
+if teleportEnabled and autoHatchEnabled then teleportToSelectedEgg() end
 if eventsEnabled then enableEvents() end
 
 if autoGroupBenefits then
