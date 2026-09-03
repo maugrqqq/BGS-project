@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v27
+-- BGS Egg Opener - Fixed v28
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow, Farm Pickups + Bigger first, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow, Farm Pickups with Farm method, Discover Islands, WalkSpeed and JumpPower
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -74,7 +74,8 @@ local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
 local autoBlowEnabled = false
 local farmPickupsEnabled = false
-local biggerFirstEnabled = false
+local farmMethod = 'moveTo'
+local farmSpeed = 1
 local moveSpeed = 24
 local jumpHeight = 70
 
@@ -483,13 +484,12 @@ local function farmPickups()
             local candidates = {}
             for _, part in ipairs(pickupsFolder:GetDescendants()) do
                 if part:IsA('BasePart') and part.Name == 'Part' then
-                    local hasChildren = #part:GetChildren() > 0
-                    if biggerFirstEnabled then
-                        if hasChildren then
+                    if farmMethod == 'moveTo' then
+                        table.insert(candidates, part)
+                    else
+                        if #part:GetChildren() > 0 then
                             table.insert(candidates, part)
                         end
-                    else
-                        table.insert(candidates, part)
                     end
                 end
             end
@@ -504,16 +504,38 @@ local function farmPickups()
                 end
             end
             if nearest then
-                local flatDir = nearest.Position - hrp.Position
-                flatDir = Vector3.new(flatDir.X, 0, flatDir.Z)
-                local lookCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatDir)
-                local _, yaw, _ = lookCFrame:ToEulerAnglesYXZ()
-                local currentYaw = select(2, hrp.CFrame:ToEulerAnglesYXZ())
-                humanoid:MoveTo(nearest.Position)
-                humanoid.MoveToFinished:Wait()
-                wait(0.1)
-                hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, currentYaw, 0)
-                wait(0.2)
+                if farmMethod == 'moveTo' then
+                    humanoid:MoveTo(nearest.Position)
+                    humanoid.MoveToFinished:Wait()
+                    local targetPos = nearest.Position
+                    local hrpPos = hrp.Position
+                    local offset = 5
+                    local directions = {
+                        Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
+                        Vector3.new(0, 0, 1), Vector3.new(0, 0, -1)
+                    }
+                    local step = 0
+                    while farmPickupsEnabled and nearest and nearest.Parent and nearest:IsDescendantOf(Workspace) do
+                        step = step + 1
+                        local dir = directions[(step - 1) % 4 + 1]
+                        local newPos = hrp.Position + dir * offset
+                        humanoid:MoveTo(newPos)
+                        humanoid.MoveToFinished:Wait()
+                        wait(0.05)
+                    end
+                elseif farmMethod == 'Tween' then
+                    local targetPos = nearest.Position + Vector3.new(0, 3, 0)
+                    local dist = (targetPos - hrp.Position).Magnitude
+                    local tweenTime = dist / (farmSpeed * 10)
+                    tweenTime = math.clamp(tweenTime, 0.1, 10)
+                    local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos)})
+                    tween:Play()
+                    tween.Completed:Wait()
+                    wait(0.1)
+                elseif farmMethod == 'Teleport' then
+                    hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0))
+                    wait(0.1)
+                end
             else
                 wait(0.5)
             end
@@ -527,7 +549,7 @@ local function saveCurrent()
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
         autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, farmPickupsEnabled=farmPickupsEnabled,
-        biggerFirstEnabled=biggerFirstEnabled, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
+        farmMethod=farmMethod, farmSpeed=farmSpeed, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
 end
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
@@ -639,7 +661,20 @@ MiscTab:CreateToggle({Name='Farm Pickups', CurrentValue=farmPickupsEnabled, Call
     end
     saveCurrent()
 end})
-MiscTab:CreateToggle({Name='Bigger first', CurrentValue=biggerFirstEnabled, Callback=function(v) biggerFirstEnabled = v saveCurrent() end})
+MiscTab:CreateDropdown({Name='Farm method', Options={'moveTo', 'Tween', 'Teleport'}, CurrentOption={farmMethod}, Callback=function(opt)
+    farmMethod = opt[1]
+    saveCurrent()
+end})
+MiscTab:CreateSlider({
+    Name = 'Tween & Teleport Speed',
+    Range = {0.1, 10},
+    Increment = 0.1,
+    CurrentValue = farmSpeed,
+    Callback = function(v)
+        farmSpeed = v
+        saveCurrent()
+    end
+})
 MiscTab:CreateParagraph({Title='Discovery', Content='Teleport to all undiscovered floating islands'})
 MiscTab:CreateDivider()
 MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
