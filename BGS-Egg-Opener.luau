@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v34
+-- BGS Egg Opener - Fixed v35
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow, Farm Pickups with line-based path, Discover Islands, WalkSpeed and JumpPower
+-- Pickups tab: Farm pickups algorithm from optimized script
 -- Anti-AFK on script start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
@@ -59,6 +59,7 @@ local MainTab = Window:CreateTab('Main', 4483362458)
 local EventTab = Window:CreateTab('Events', 4483362458)
 local WebhookTab = Window:CreateTab('Webhook', 4483362458)
 local TasksTab = Window:CreateTab('Tasks', 4483362458)
+local PickupsTab = Window:CreateTab('Pickups', 4483362458)
 local MiscTab = Window:CreateTab('Misc', 4483362458)
 
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
@@ -75,9 +76,11 @@ local autoSpinToWin = config.autoSpinToWin or false
 local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
 local autoBlowEnabled = config.autoBlowEnabled or false
-local farmPickupsEnabled = config.farmPickupsEnabled or false
-local farmMethod = config.farmMethod or 'moveTo'
-local farmSpeed = tonumber(config.farmSpeed) or 1
+local pickupLoopEnabled = config.pickupLoopEnabled or false
+local pickupRadius = tonumber(config.pickupRadius) or 300
+local pickupTweenSpeed = tonumber(config.pickupTweenSpeed) or 550
+local pickupBelowOffset = tonumber(config.pickupBelowOffset) or -1.5
+local pickupScanInterval = tonumber(config.pickupScanInterval) or 0.35
 local moveSpeed = tonumber(config.moveSpeed) or 24
 local jumpHeight = tonumber(config.jumpHeight) or 70
 
@@ -474,103 +477,97 @@ local function discoverIslands()
     end)
 end
 
-local currentPathLine = nil
-local function clearCurrentPathLine()
-    if currentPathLine then
-        pcall(function() currentPathLine:Destroy() end)
-        currentPathLine = nil
+-- ===== FARM PICKUPS ALGORITHM (from optimized script) =====
+local pickupPathThread = nil
+local function stopPickupLoop()
+    pickupLoopEnabled = false
+    if pickupPathThread then
+        task.cancel(pickupPathThread)
+        pickupPathThread = nil
     end
 end
 
-local function drawLineTo(fromPos, toPos)
-    clearCurrentPathLine()
-    local dist = (toPos - fromPos).Magnitude
-    if dist <= 0.1 then return end
-    local mid = (fromPos + toPos) / 2
-    local part = Instance.new('Part')
-    part.Name = 'BGS_CurrentPathLine'
-    part.Anchored = true
-    part.CanCollide = false
-    part.Transparency = 0.5
-    part.Material = Enum.Material.Neon
-    part.Color = Color3.fromRGB(255, 0, 255)
-    part.Size = Vector3.new(0.2, 0.2, dist)
-    part.CFrame = CFrame.lookAt(mid, toPos)
-    part.Parent = Workspace
-    currentPathLine = part
+local function getPickupPathParts()
+    local pickupsFolder = Workspace:FindFirstChild('Pickups')
+    if not pickupsFolder then return {} end
+    local char = getCharacter()
+    local hrp = char:FindFirstChild('HumanoidRootPart')
+    local playerPos = hrp and hrp.Position or Vector3.zero
+    local entries = {}
+    for _, part in ipairs(pickupsFolder:GetDescendants()) do
+        if part:IsA('BasePart') and part.Name == 'Part' then
+            local distance = (part.Position - playerPos).Magnitude
+            if distance <= pickupRadius and part:IsDescendantOf(Workspace) then
+                local priority = 0
+                if #part:GetChildren() == 0 then priority = 1 end
+                table.insert(entries, { part = part, distance = distance, priority = priority })
+            end
+        end
+    end
+    table.sort(entries, function(a, b)
+        if a.priority ~= b.priority then return a.priority < b.priority end
+        return a.distance < b.distance
+    end)
+    local path = {}
+    for _, entry in ipairs(entries) do table.insert(path, entry.part) end
+    return path
 end
 
-local function farmPickups()
-    task.spawn(function()
-        while farmPickupsEnabled do
-            local char = getCharacter()
-            local hrp = char:FindFirstChild('HumanoidRootPart')
-            local humanoid = char:FindFirstChildOfClass('Humanoid')
-            if not hrp or not humanoid then wait(0.5) continue end
-            local pickupsFolder = Workspace:FindFirstChild('Pickups')
-            if not pickupsFolder then wait(0.5) continue end
-            local candidates = {}
-            for _, part in ipairs(pickupsFolder:GetDescendants()) do
-                if part:IsA('BasePart') and part.Name == 'Part' then
-                    if farmMethod == 'moveTo' then
-                        table.insert(candidates, part)
-                    else
-                        if #part:GetChildren() > 0 then
-                            table.insert(candidates, part)
+local function startPickupLoop()
+    if pickupPathThread then return end
+    pickupLoopEnabled = true
+    pickupPathThread = task.spawn(function()
+        local char = getCharacter()
+        local hrp = char:WaitForChild('HumanoidRootPart', 5)
+        local humanoid = char:FindFirstChildOfClass('Humanoid')
+        local pickupLastScan = 0
+        if hrp then hrp.CanCollide = false end
+        if humanoid then humanoid.AutoRotate = false end
+        while pickupLoopEnabled do
+            local now = os.clock()
+            if now - pickupLastScan >= pickupScanInterval then
+                pickupLastScan = now
+                local path = getPickupPathParts()
+                if #path == 0 then
+                    task.wait(0.05)
+                else
+                    char = getCharacter()
+                    hrp = char:WaitForChild('HumanoidRootPart', 5)
+                    humanoid = char:FindFirstChildOfClass('Humanoid')
+                    if hrp then hrp.CanCollide = false end
+                    if humanoid then humanoid.AutoRotate = false end
+                    if hrp and humanoid then
+                        for _, part in ipairs(path) do
+                            if not pickupLoopEnabled then break end
+                            if not part:IsDescendantOf(Workspace) then continue end
+                            local targetPos = part.Position + Vector3.new(0, 0.5, 0)
+                            local distance = (hrp.Position - targetPos).Magnitude
+                            local direction = targetPos - hrp.Position
+                            local yaw = 0
+                            if direction.Magnitude > 0 then yaw = math.atan2(direction.X, direction.Z) end
+                            if distance <= 1.5 then
+                                local finalCFrame = CFrame.new(targetPos + Vector3.new(0, pickupBelowOffset, 0)) * CFrame.Angles(0, yaw, 0)
+                                hrp.CFrame = finalCFrame
+                                hrp.AssemblyLinearVelocity = Vector3.zero
+                                hrp.AssemblyAngularVelocity = Vector3.zero
+                            else
+                                local moveTime = math.max(0.05, distance / math.max(1, pickupTweenSpeed))
+                                local tween = TweenService:Create(hrp, TweenInfo.new(moveTime, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {
+                                    CFrame = CFrame.new(targetPos) * CFrame.Angles(0, yaw, 0)
+                                })
+                                tween:Play()
+                                tween.Completed:Wait()
+                            end
+                            task.wait(0.05)
                         end
                     end
                 end
             end
-            if #candidates == 0 then wait(0.5) continue end
-            local startPart = nil
-            local minDist = math.huge
-            for _, part in ipairs(candidates) do
-                local d = (part.Position - hrp.Position).Magnitude
-                if d < minDist then
-                    minDist = d
-                    startPart = part
-                end
-            end
-            if not startPart then wait(0.5) continue end
-            local dir = startPart.Position - hrp.Position
-            if dir.Magnitude < 0.1 then wait(0.2) continue end
-            local dirNorm = dir.Unit
-            local lineParts = {}
-            for _, part in ipairs(candidates) do
-                local v = part.Position - hrp.Position
-                if v.Magnitude > 0.1 then
-                    local vNorm = v.Unit
-                    local dot = dirNorm:Dot(vNorm)
-                    if dot > 0.98 then
-                        local cross = dirNorm:Cross(vNorm).Magnitude
-                        if cross < 0.15 then
-                            table.insert(lineParts, part)
-                        end
-                    end
-                end
-            end
-            table.sort(lineParts, function(a, b)
-                return (a.Position - hrp.Position).Magnitude < (b.Position - hrp.Position).Magnitude
-            end)
-            local targetPart = lineParts[#lineParts] or startPart
-            local targetPos = targetPart.Position + Vector3.new(0, -3, 0)
-            drawLineTo(hrp.Position, targetPos)
-            if farmMethod == 'moveTo' then
-                humanoid:MoveTo(targetPos)
-                humanoid.MoveToFinished:Wait()
-            elseif farmMethod == 'Tween' then
-                local speed = farmSpeed
-                local dist = (targetPos - hrp.Position).Magnitude
-                local tweenTime = dist / speed
-                tweenTime = math.clamp(tweenTime, 0.05, 30)
-                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos)})
-                tween:Play()
-                tween.Completed:Wait()
-            end
-            clearCurrentPathLine()
-            wait(0.1)
+            task.wait(0.05)
         end
-        clearCurrentPathLine()
+        if hrp then hrp.CanCollide = true end
+        if humanoid then humanoid.AutoRotate = true end
+        pickupPathThread = nil
     end)
 end
 
@@ -594,12 +591,12 @@ local function saveCurrent()
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
-        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, farmPickupsEnabled=farmPickupsEnabled,
-        farmMethod=farmMethod, farmSpeed=farmSpeed, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
+        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, pickupLoopEnabled=pickupLoopEnabled,
+        pickupRadius=pickupRadius, pickupTweenSpeed=pickupTweenSpeed, pickupBelowOffset=pickupBelowOffset,
+        pickupScanInterval=pickupScanInterval, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
 end
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
-MainTab:CreateDivider()
 MainTab:CreateDropdown({Name='Select Egg', Options=eggList, CurrentOption={selectedEgg}, Callback=function(opt)
     selectedEgg = opt[1]
     if teleportEnabled then teleportToSelectedEgg() end
@@ -632,14 +629,11 @@ MainTab:CreateSlider({
     end
 })
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
-EventTab:CreateDivider()
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
-WebhookTab:CreateParagraph({Title='Discord webhook', Content='Send legendary pet hatches into discord'})
-WebhookTab:CreateDivider()
+WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets to Discord'})
 WebhookTab:CreateToggle({Name='Enable Webhook', CurrentValue=webhookEnabled, Callback=function(v) webhookEnabled = v saveCurrent() end})
 WebhookTab:CreateInput({Name='Webhook URL', PlaceholderText='https://discord.com/api/webhooks/...', RemoveTextAfterFocusLost=false, Callback=function(text) webhookURL = text saveCurrent() end})
 TasksTab:CreateParagraph({Title='Tasks', Content='Auto tasks'})
-TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefits, Callback=function(v)
     autoGroupBenefits = v saveCurrent()
@@ -653,7 +647,6 @@ TasksTab:CreateToggle({Name='Auto Group Benefits', CurrentValue=autoGroupBenefit
     else safeSet(GroupLabel, 'Off') end
 end})
 local GroupLabel = TasksTab:CreateLabel('Off')
-TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Callback=function(v)
     autoSpinToWin = v saveCurrent()
@@ -667,7 +660,6 @@ TasksTab:CreateToggle({Name='Auto Spin To Win', CurrentValue=autoSpinToWin, Call
     else safeSet(SpinLabel, 'Off') end
 end})
 local SpinLabel = TasksTab:CreateLabel('Off')
-TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpinToWin, Callback=function(v)
     autoAlienSpinToWin = v saveCurrent()
@@ -684,7 +676,6 @@ TasksTab:CreateToggle({Name='Auto Alien Spin To Win', CurrentValue=autoAlienSpin
     else safeSet(AlienSpinLabel, 'Off') end
 end})
 local AlienSpinLabel = TasksTab:CreateLabel('Off')
-TasksTab:CreateDivider()
 
 TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards, Callback=function(v)
     autoDailyRewards = v saveCurrent()
@@ -697,34 +688,46 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
-MiscTab:CreateParagraph({Title='Game', Content='Auto blow bubbles, farm nearby pickups'})
-MiscTab:CreateDivider()
+PickupsTab:CreateParagraph({Title='Farm Pickups', Content='Auto collect nearby pickups'})
+PickupsTab:CreateToggle({Name='Pickup Path', CurrentValue=pickupLoopEnabled, Callback=function(v)
+    pickupLoopEnabled = v
+    if v then startPickupLoop() else stopPickupLoop() end
+    saveCurrent()
+end})
+PickupsTab:CreateSlider({
+    Name = 'Pickup Radius',
+    Range = {50, 500},
+    Increment = 1,
+    CurrentValue = pickupRadius,
+    Callback = function(v) pickupRadius = v saveCurrent() end
+})
+PickupsTab:CreateSlider({
+    Name = 'Tween Speed',
+    Range = {50, 2000},
+    Increment = 10,
+    CurrentValue = pickupTweenSpeed,
+    Callback = function(v) pickupTweenSpeed = v saveCurrent() end
+})
+PickupsTab:CreateSlider({
+    Name = 'Below Offset',
+    Range = {-5, 5},
+    Increment = 0.1,
+    CurrentValue = pickupBelowOffset,
+    Callback = function(v) pickupBelowOffset = v saveCurrent() end
+})
+PickupsTab:CreateSlider({
+    Name = 'Scan Delay',
+    Range = {0.1, 1},
+    Increment = 0.01,
+    CurrentValue = pickupScanInterval,
+    Callback = function(v) pickupScanInterval = v saveCurrent() end
+})
+
+MiscTab:CreateParagraph({Title='Game', Content='Auto blow bubbles'})
 MiscTab:CreateToggle({Name='Auto Blow', CurrentValue=autoBlowEnabled, Callback=function(v) autoBlowEnabled = v saveCurrent() end})
-MiscTab:CreateToggle({Name='Farm Pickups', CurrentValue=farmPickupsEnabled, Callback=function(v)
-    farmPickupsEnabled = v
-    if v then
-        farmPickups()
-    else
-        clearCurrentPathLine()
-    end
-    saveCurrent()
-end})
-MiscTab:CreateDropdown({Name='Farm method', Options={'moveTo', 'Tween'}, CurrentOption={farmMethod}, Callback=function(opt)
-    farmMethod = opt[1]
-    saveCurrent()
-end})
-MiscTab:CreateInput({Name='Tween Speed', PlaceholderText='1', RemoveTextAfterFocusLost=false, Callback=function(text)
-    local num = tonumber(text)
-    if num then
-        farmSpeed = num
-        saveCurrent()
-    end
-end})
 MiscTab:CreateParagraph({Title='Discovery', Content='Teleport to all undiscovered floating islands'})
-MiscTab:CreateDivider()
 MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
 MiscTab:CreateParagraph({Title='Character', Content='Movement'})
-MiscTab:CreateDivider()
 MiscTab:CreateInput({Name='WalkSpeed', PlaceholderText='24', RemoveTextAfterFocusLost=false, Callback=function(text)
     local num = tonumber(text)
     if num then
@@ -781,6 +784,7 @@ if autoDailyRewards then
     safeSet(DailyLabel, 'Loading...')
     task.spawn(function() dailyText = readDailyText() lastDailyRefresh = os.clock() safeSet(DailyLabel, dailyText) end)
 end
+if pickupLoopEnabled then startPickupLoop() end
 
 local lastEggsOpened = -1
 local stalledTime = 0
