@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v32
+-- BGS Egg Opener - Fixed v33
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow, Farm Pickups with moveTo/Tween path lines, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow, Farm Pickups with moveTo/Tween path line to next only, Discover Islands, WalkSpeed and JumpPower
 -- Anti-AFK on script start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
@@ -474,35 +474,30 @@ local function discoverIslands()
     end)
 end
 
-local pathParts = {}
-local function clearPathParts()
-    for _, part in ipairs(pathParts) do
-        pcall(function() part:Destroy() end)
+local currentPathLine = nil
+local function clearCurrentPathLine()
+    if currentPathLine then
+        pcall(function() currentPathLine:Destroy() end)
+        currentPathLine = nil
     end
-    pathParts = {}
 end
 
-local function drawPathBetweenParts(parts)
-    clearPathParts()
-    for i = 1, #parts - 1 do
-        local p1 = parts[i].Position
-        local p2 = parts[i + 1].Position
-        local mid = (p1 + p2) / 2
-        local dist = (p2 - p1).Magnitude
-        if dist > 0.1 then
-            local part = Instance.new('Part')
-            part.Name = 'BGS_PathLine'
-            part.Anchored = true
-            part.CanCollide = false
-            part.Transparency = 0.5
-            part.Material = Enum.Material.Neon
-            part.Color = Color3.fromRGB(255, 0, 255)
-            part.Size = Vector3.new(0.2, 0.2, dist)
-            part.CFrame = CFrame.lookAt(mid, p2)
-            part.Parent = Workspace
-            table.insert(pathParts, part)
-        end
-    end
+local function drawLineTo(fromPos, toPos)
+    clearCurrentPathLine()
+    local dist = (toPos - fromPos).Magnitude
+    if dist <= 0.1 then return end
+    local mid = (fromPos + toPos) / 2
+    local part = Instance.new('Part')
+    part.Name = 'BGS_CurrentPathLine'
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 0.5
+    part.Material = Enum.Material.Neon
+    part.Color = Color3.fromRGB(255, 0, 255)
+    part.Size = Vector3.new(0.2, 0.2, dist)
+    part.CFrame = CFrame.lookAt(mid, toPos)
+    part.Parent = Workspace
+    currentPathLine = part
 end
 
 local function farmPickups()
@@ -538,6 +533,7 @@ local function farmPickups()
             end
             if nearest then
                 local targetPos = nearest.Position + Vector3.new(0, -3, 0)
+                drawLineTo(hrp.Position, targetPos)
                 if farmMethod == 'moveTo' then
                     humanoid:MoveTo(targetPos)
                     humanoid.MoveToFinished:Wait()
@@ -576,11 +572,13 @@ local function farmPickups()
                         bounceDir = -bounceDir
                     end
                 end
+                clearCurrentPathLine()
                 wait(0.1)
             else
                 wait(0.5)
             end
         end
+        clearCurrentPathLine()
     end)
 end
 
@@ -714,6 +712,8 @@ MiscTab:CreateToggle({Name='Farm Pickups', CurrentValue=farmPickupsEnabled, Call
     farmPickupsEnabled = v
     if v then
         farmPickups()
+    else
+        clearCurrentPathLine()
     end
     saveCurrent()
 end})
@@ -793,7 +793,6 @@ end
 local lastEggsOpened = -1
 local stalledTime = 0
 local lastBlowAt = 0
-local lastPathDrawAt = 0
 
 local lastTick = os.clock()
 while true do
@@ -806,20 +805,6 @@ while true do
         if now - lastBlowAt >= 0.5 then
             lastBlowAt = now
             pcall(function() Event:FireServer('BlowBubble') end)
-        end
-    end
-
-    if farmPickupsEnabled and (now - lastPathDrawAt >= 1) then
-        lastPathDrawAt = now
-        local pickupsFolder = Workspace:FindFirstChild('Pickups')
-        if pickupsFolder then
-            local parts = {}
-            for _, part in ipairs(pickupsFolder:GetDescendants()) do
-                if part:IsA('BasePart') and part.Name == 'Part' then
-                    table.insert(parts, part)
-                end
-            end
-            drawPathBetweenParts(parts)
         end
     end
 
