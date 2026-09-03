@@ -375,14 +375,16 @@ local function processSystemMessage(rawText)
     if text == '' then return end
     local cleanText = text:gsub('<[^>]+>', '')
     if cleanText:sub(1, #playerName) ~= playerName then return end
-    for petName, imgUrl in pairs(petImageUrls) do
-        if cleanText:find(petName, 1, true) then
-            local chatColor = parseChatColor(text)
-            local chance = cleanText:match('%(([^%)]+)%)') or ''
-            sendWebhookMessage(cleanText, petName, chance, chatColor)
+    local petName = ''
+    for name in pairs(petImageUrls) do
+        if cleanText:find(name, 1, true) then
+            petName = name
             break
         end
     end
+    local chatColor = parseChatColor(text)
+    local chance = cleanText:match('%(([^%)]+)%)') or ''
+    sendWebhookMessage(cleanText, petName, chance, chatColor)
 end
 
 local function connectChatMonitor()
