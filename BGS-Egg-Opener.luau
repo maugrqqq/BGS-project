@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v26
+-- BGS Egg Opener - Fixed v27
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow Toggle, Farm Pickups, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow, Farm Pickups + Bigger first, Discover Islands, WalkSpeed and JumpPower
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -74,6 +74,7 @@ local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
 local autoBlowEnabled = false
 local farmPickupsEnabled = false
+local biggerFirstEnabled = false
 local moveSpeed = 24
 local jumpHeight = 70
 
@@ -479,22 +480,39 @@ local function farmPickups()
             if not hrp or not humanoid then wait(0.5) continue end
             local pickupsFolder = Workspace:FindFirstChild('Pickups')
             if not pickupsFolder then wait(0.5) continue end
-            local nearest = nil
-            local nearestDist = math.huge
+            local candidates = {}
             for _, part in ipairs(pickupsFolder:GetDescendants()) do
                 if part:IsA('BasePart') and part.Name == 'Part' then
-                    local dist = (part.Position - hrp.Position).Magnitude
-                    if dist < nearestDist then
-                        nearestDist = dist
-                        nearest = part
+                    local hasChildren = #part:GetChildren() > 0
+                    if biggerFirstEnabled then
+                        if hasChildren then
+                            table.insert(candidates, part)
+                        end
+                    else
+                        table.insert(candidates, part)
                     end
                 end
             end
+            if #candidates == 0 then wait(0.5) continue end
+            local nearest = nil
+            local nearestDist = math.huge
+            for _, part in ipairs(candidates) do
+                local dist = (part.Position - hrp.Position).Magnitude
+                if dist < nearestDist then
+                    nearestDist = dist
+                    nearest = part
+                end
+            end
             if nearest then
+                local flatDir = nearest.Position - hrp.Position
+                flatDir = Vector3.new(flatDir.X, 0, flatDir.Z)
+                local lookCFrame = CFrame.lookAt(hrp.Position, hrp.Position + flatDir)
+                local _, yaw, _ = lookCFrame:ToEulerAnglesYXZ()
+                local currentYaw = select(2, hrp.CFrame:ToEulerAnglesYXZ())
                 humanoid:MoveTo(nearest.Position)
                 humanoid.MoveToFinished:Wait()
                 wait(0.1)
-                hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0))
+                hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, currentYaw, 0)
                 wait(0.2)
             else
                 wait(0.5)
@@ -508,7 +526,8 @@ local function saveCurrent()
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
-        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, farmPickupsEnabled=farmPickupsEnabled, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
+        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, farmPickupsEnabled=farmPickupsEnabled,
+        biggerFirstEnabled=biggerFirstEnabled, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
 end
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
@@ -620,6 +639,7 @@ MiscTab:CreateToggle({Name='Farm Pickups', CurrentValue=farmPickupsEnabled, Call
     end
     saveCurrent()
 end})
+MiscTab:CreateToggle({Name='Bigger first', CurrentValue=biggerFirstEnabled, Callback=function(v) biggerFirstEnabled = v saveCurrent() end})
 MiscTab:CreateParagraph({Title='Discovery', Content='Teleport to all undiscovered floating islands'})
 MiscTab:CreateDivider()
 MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
