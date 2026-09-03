@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v33
+-- BGS Egg Opener - Fixed v34
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow, Farm Pickups with moveTo/Tween path line to next only, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow, Farm Pickups with line-based path, Discover Islands, WalkSpeed and JumpPower
 -- Anti-AFK on script start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
@@ -522,61 +522,53 @@ local function farmPickups()
                 end
             end
             if #candidates == 0 then wait(0.5) continue end
-            local nearest = nil
-            local nearestDist = math.huge
+            local startPart = nil
+            local minDist = math.huge
             for _, part in ipairs(candidates) do
-                local dist = (part.Position - hrp.Position).Magnitude
-                if dist < nearestDist then
-                    nearestDist = dist
-                    nearest = part
+                local d = (part.Position - hrp.Position).Magnitude
+                if d < minDist then
+                    minDist = d
+                    startPart = part
                 end
             end
-            if nearest then
-                local targetPos = nearest.Position + Vector3.new(0, -3, 0)
-                drawLineTo(hrp.Position, targetPos)
-                if farmMethod == 'moveTo' then
-                    humanoid:MoveTo(targetPos)
-                    humanoid.MoveToFinished:Wait()
-                    local offset = 5
-                    local directions = {
-                        Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
-                        Vector3.new(0, 0, 1), Vector3.new(0, 0, -1)
-                    }
-                    local step = 0
-                    local bounceTime = math.clamp(1 / farmSpeed, 0.1, 2)
-                    local startTime = os.clock()
-                    while farmPickupsEnabled and (os.clock() - startTime) < bounceTime do
-                        step = step + 1
-                        local dir = directions[(step - 1) % 4 + 1]
-                        local newPos = hrp.Position + dir * offset
-                        humanoid:MoveTo(newPos)
-                        humanoid.MoveToFinished:Wait()
-                        wait(0.05)
-                    end
-                elseif farmMethod == 'Tween' then
-                    local speed = farmSpeed
-                    local dist = (targetPos - hrp.Position).Magnitude
-                    local tweenTime = dist / speed
-                    tweenTime = math.clamp(tweenTime, 0.05, 30)
-                    local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos)})
-                    tween:Play()
-                    tween.Completed:Wait()
-                    local bounceDir = 1
-                    local bounceCount = math.max(1, math.floor(speed / 10))
-                    for i = 1, bounceCount do
-                        if not farmPickupsEnabled then break end
-                        local bouncePos = hrp.Position + Vector3.new(0, bounceDir * 3, 0)
-                        local bounceTween = TweenService:Create(hrp, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {CFrame = CFrame.new(bouncePos)})
-                        bounceTween:Play()
-                        bounceTween.Completed:Wait()
-                        bounceDir = -bounceDir
+            if not startPart then wait(0.5) continue end
+            local dir = startPart.Position - hrp.Position
+            if dir.Magnitude < 0.1 then wait(0.2) continue end
+            local dirNorm = dir.Unit
+            local lineParts = {}
+            for _, part in ipairs(candidates) do
+                local v = part.Position - hrp.Position
+                if v.Magnitude > 0.1 then
+                    local vNorm = v.Unit
+                    local dot = dirNorm:Dot(vNorm)
+                    if dot > 0.98 then
+                        local cross = dirNorm:Cross(vNorm).Magnitude
+                        if cross < 0.15 then
+                            table.insert(lineParts, part)
+                        end
                     end
                 end
-                clearCurrentPathLine()
-                wait(0.1)
-            else
-                wait(0.5)
             end
+            table.sort(lineParts, function(a, b)
+                return (a.Position - hrp.Position).Magnitude < (b.Position - hrp.Position).Magnitude
+            end)
+            local targetPart = lineParts[#lineParts] or startPart
+            local targetPos = targetPart.Position + Vector3.new(0, -3, 0)
+            drawLineTo(hrp.Position, targetPos)
+            if farmMethod == 'moveTo' then
+                humanoid:MoveTo(targetPos)
+                humanoid.MoveToFinished:Wait()
+            elseif farmMethod == 'Tween' then
+                local speed = farmSpeed
+                local dist = (targetPos - hrp.Position).Magnitude
+                local tweenTime = dist / speed
+                tweenTime = math.clamp(tweenTime, 0.05, 30)
+                local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos)})
+                tween:Play()
+                tween.Completed:Wait()
+            end
+            clearCurrentPathLine()
+            wait(0.1)
         end
         clearCurrentPathLine()
     end)
