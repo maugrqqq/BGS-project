@@ -1,5 +1,6 @@
--- BGS Egg Opener - Fixed v19
+-- BGS Egg Opener - Fixed v20
 -- AlienSpinLabel после тумблера
+-- Chat forwarding fixed for legacy chat
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -368,13 +369,14 @@ local function sendWebhookMessage(cleanMsg, petName, chance, chatColor)
     end)
 end
 
-local function processSystemMessage(rawText)
+local function processSystemMessage(message, speakerName)
     if not webhookEnabled or webhookURL == '' then return end
     local playerName = LocalPlayer.Name
-    local text = tostring(rawText or '')
+    if speakerName and speakerName ~= playerName then return end
+    local text = tostring(message or '')
     if text == '' then return end
     local cleanText = text:gsub('<[^>]+>', '')
-    if cleanText:sub(1, #playerName) ~= playerName then return end
+    if not speakerName and cleanText:sub(1, #playerName) ~= playerName then return end
     local petName = ''
     for name in pairs(petImageUrls) do
         if cleanText:find(name, 1, true) then
@@ -392,7 +394,8 @@ local function connectChatMonitor()
         if TextChatService and TextChatService.MessageReceived then
             TextChatService.MessageReceived:Connect(function(msg)
                 if msg and msg.Text then
-                    processSystemMessage(msg.Text)
+                    local speaker = msg.TextSource and msg.TextSource.Name or nil
+                    processSystemMessage(msg.Text, speaker)
                 end
             end)
         end
@@ -402,10 +405,8 @@ local function connectChatMonitor()
         if chatEvents then
             local onMessage = chatEvents:FindFirstChild('OnMessageDoneFiltering')
             if onMessage and onMessage:IsA('RemoteEvent') then
-                onMessage.OnClientEvent:Connect(function(data)
-                    if data and type(data) == 'table' and data.Message then
-                        processSystemMessage(tostring(data.Message))
-                    end
+                onMessage.OnClientEvent:Connect(function(message, speakerName)
+                    processSystemMessage(tostring(message), tostring(speakerName))
                 end)
             end
         end
