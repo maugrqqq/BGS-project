@@ -1,7 +1,8 @@
--- BGS Egg Opener - Fixed v30
+-- BGS Egg Opener - Fixed v31
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
 -- Misc tab: Auto Blow, Farm Pickups with method and speed, Discover Islands, WalkSpeed and JumpPower
+-- Anti-AFK on script start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -11,6 +12,7 @@ local HttpService = game:GetService('HttpService')
 local Event = game:GetService('ReplicatedStorage').NetworkRemoteEvent
 local TextChatService = game:GetService('TextChatService')
 local TweenService = game:GetService('TweenService')
+local VirtualUser = game:GetService('VirtualUser')
 
 local function safeSet(label, text)
     if not label then return end
@@ -561,6 +563,21 @@ local function farmPickups()
         end
     end)
 end
+
+local function antiAfkLoop()
+    task.spawn(function()
+        while true do
+            pcall(function()
+                VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+                wait(0.1)
+                VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+            end)
+            wait(60)
+        end
+    end)
+end
+
+antiAfkLoop()
 
 local function saveCurrent()
     saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
