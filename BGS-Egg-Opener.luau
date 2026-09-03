@@ -1,6 +1,7 @@
--- BGS Egg Opener - Fixed v21
+-- BGS Egg Opener - Fixed v22
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
+-- Misc tab: WalkSpeed (24) and JumpPower (70) editable
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -55,6 +56,7 @@ local MainTab = Window:CreateTab('Main', 4483362458)
 local EventTab = Window:CreateTab('Events', 4483362458)
 local WebhookTab = Window:CreateTab('Webhook', 4483362458)
 local TasksTab = Window:CreateTab('Tasks', 4483362458)
+local MiscTab = Window:CreateTab('Misc', 4483362458)
 
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
 local autoHatchEnabled = config.autoHatchEnabled or false
@@ -69,6 +71,8 @@ local autoGroupBenefits = config.autoGroupBenefits or false
 local autoSpinToWin = config.autoSpinToWin or false
 local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
+local moveSpeed = 24
+local jumpHeight = 70
 
 local LocalPlayer = game.Players.LocalPlayer
 local Workspace = game:GetService('Workspace')
@@ -422,7 +426,7 @@ local function saveCurrent()
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
-        autoAlienSpinToWin=autoAlienSpinToWin})
+        autoAlienSpinToWin=autoAlienSpinToWin, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
 end
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
@@ -516,6 +520,32 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
     else safeSet(DailyLabel, 'Off') end
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
+
+MiscTab:CreateParagraph({Title='Character', Content='Change WalkSpeed and JumpPower'})
+MiscTab:CreateInput({Name='WalkSpeed', PlaceholderText='24', RemoveTextAfterFocusLost=false, Callback=function(text)
+    local num = tonumber(text)
+    if num then
+        moveSpeed = num
+        pcall(function()
+            local char = getCharacter()
+            local humanoid = char:FindFirstChildOfClass('Humanoid')
+            if humanoid then humanoid.WalkSpeed = moveSpeed end
+        end)
+        saveCurrent()
+    end
+end})
+MiscTab:CreateInput({Name='JumpPower', PlaceholderText='70', RemoveTextAfterFocusLost=false, Callback=function(text)
+    local num = tonumber(text)
+    if num then
+        jumpHeight = num
+        pcall(function()
+            local char = getCharacter()
+            local humanoid = char:FindFirstChildOfClass('Humanoid')
+            if humanoid then humanoid.JumpPower = jumpHeight end
+        end)
+        saveCurrent()
+    end
+end})
 
 if teleportEnabled then teleportToSelectedEgg() end
 if eventsEnabled then enableEvents() end
