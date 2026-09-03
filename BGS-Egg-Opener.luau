@@ -1,6 +1,6 @@
--- BGS Egg Opener - Fixed v20
+-- BGS Egg Opener - Fixed v21
 -- AlienSpinLabel после тумблера
--- Chat forwarding fixed for legacy chat
+-- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -369,51 +369,53 @@ local function sendWebhookMessage(cleanMsg, petName, chance, chatColor)
     end)
 end
 
-local function processSystemMessage(message, speakerName)
+local function processSystemMessage(msgText)
     if not webhookEnabled or webhookURL == '' then return end
+    if not msgText or msgText == '' then return end
     local playerName = LocalPlayer.Name
-    if speakerName and speakerName ~= playerName then return end
-    local text = tostring(message or '')
-    if text == '' then return end
-    local cleanText = text:gsub('<[^>]+>', '')
-    if not speakerName and cleanText:sub(1, #playerName) ~= playerName then return end
+    local displayName = LocalPlayer.DisplayName
+    local isLocalPlayer = false
+    if msgText:find(playerName, 1, true) or msgText:find(displayName, 1, true) then
+        isLocalPlayer = true
+    end
+    local isHatch = string.find(string.lower(msgText), 'hatched')
+    if not (isLocalPlayer and isHatch) then return end
+    local cleanMsg = msgText:gsub('<[^>]+>', '')
+    local chatColor = parseChatColor(msgText)
     local petName = ''
     for name in pairs(petImageUrls) do
-        if cleanText:find(name, 1, true) then
+        if cleanMsg:find(name, 1, true) then
             petName = name
             break
         end
     end
-    local chatColor = parseChatColor(text)
-    local chance = cleanText:match('%(([^%)]+)%)') or ''
-    sendWebhookMessage(cleanText, petName, chance, chatColor)
+    local chance = cleanMsg:match('%(([^%)]+)%)') or ''
+    sendWebhookMessage(cleanMsg, petName, chance, chatColor)
 end
 
-local function connectChatMonitor()
-    pcall(function()
-        if TextChatService and TextChatService.MessageReceived then
-            TextChatService.MessageReceived:Connect(function(msg)
-                if msg and msg.Text then
-                    local speaker = msg.TextSource and msg.TextSource.Name or nil
-                    processSystemMessage(msg.Text, speaker)
+pcall(function()
+    local chatEvents = game.ReplicatedStorage:FindFirstChild('DefaultChatSystemChatEvents')
+    if chatEvents then
+        local onMessage = chatEvents:FindFirstChild('OnMessageDoneFiltering')
+        if onMessage and onMessage:IsA('RemoteEvent') then
+            onMessage.OnClientEvent:Connect(function(messageData)
+                if messageData and type(messageData) == 'table' and messageData.Message then
+                    processSystemMessage(tostring(messageData.Message))
                 end
             end)
         end
-    end)
-    pcall(function()
-        local chatEvents = game.ReplicatedStorage:FindFirstChild('DefaultChatSystemChatEvents')
-        if chatEvents then
-            local onMessage = chatEvents:FindFirstChild('OnMessageDoneFiltering')
-            if onMessage and onMessage:IsA('RemoteEvent') then
-                onMessage.OnClientEvent:Connect(function(message, speakerName)
-                    processSystemMessage(tostring(message), tostring(speakerName))
-                end)
-            end
-        end
-    end)
-end
+    end
+end)
 
-connectChatMonitor()
+pcall(function()
+    if TextChatService then
+        TextChatService.MessageReceived:Connect(function(textChatMessage)
+            if textChatMessage and textChatMessage.Text then
+                processSystemMessage(tostring(textChatMessage.Text))
+            end
+        end)
+    end
+end)
 
 local function saveCurrent()
     saveConfig({selectedEgg=selectedEgg, autoHatchEnabled=autoHatchEnabled, tripleHatchEnabled=tripleHatchEnabled,
