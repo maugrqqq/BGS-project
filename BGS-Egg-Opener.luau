@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v31
+-- BGS Egg Opener - Fixed v32
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow, Farm Pickups with method and speed, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow, Farm Pickups with moveTo/Tween path lines, Discover Islands, WalkSpeed and JumpPower
 -- Anti-AFK on script start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
@@ -474,6 +474,37 @@ local function discoverIslands()
     end)
 end
 
+local pathParts = {}
+local function clearPathParts()
+    for _, part in ipairs(pathParts) do
+        pcall(function() part:Destroy() end)
+    end
+    pathParts = {}
+end
+
+local function drawPathBetweenParts(parts)
+    clearPathParts()
+    for i = 1, #parts - 1 do
+        local p1 = parts[i].Position
+        local p2 = parts[i + 1].Position
+        local mid = (p1 + p2) / 2
+        local dist = (p2 - p1).Magnitude
+        if dist > 0.1 then
+            local part = Instance.new('Part')
+            part.Name = 'BGS_PathLine'
+            part.Anchored = true
+            part.CanCollide = false
+            part.Transparency = 0.5
+            part.Material = Enum.Material.Neon
+            part.Color = Color3.fromRGB(255, 0, 255)
+            part.Size = Vector3.new(0.2, 0.2, dist)
+            part.CFrame = CFrame.lookAt(mid, p2)
+            part.Parent = Workspace
+            table.insert(pathParts, part)
+        end
+    end
+end
+
 local function farmPickups()
     task.spawn(function()
         while farmPickupsEnabled do
@@ -542,17 +573,6 @@ local function farmPickups()
                         local bounceTween = TweenService:Create(hrp, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {CFrame = CFrame.new(bouncePos)})
                         bounceTween:Play()
                         bounceTween.Completed:Wait()
-                        bounceDir = -bounceDir
-                    end
-                elseif farmMethod == 'Teleport' then
-                    hrp.CFrame = CFrame.new(targetPos)
-                    local bounceDir = 1
-                    local bounceCount = math.max(1, math.floor(farmSpeed / 10))
-                    for i = 1, bounceCount do
-                        if not farmPickupsEnabled then break end
-                        wait(math.max(0.1, 1 / farmSpeed))
-                        local bouncePos = hrp.Position + Vector3.new(0, bounceDir * 3, 0)
-                        hrp.CFrame = CFrame.new(bouncePos)
                         bounceDir = -bounceDir
                     end
                 end
@@ -697,11 +717,11 @@ MiscTab:CreateToggle({Name='Farm Pickups', CurrentValue=farmPickupsEnabled, Call
     end
     saveCurrent()
 end})
-MiscTab:CreateDropdown({Name='Farm method', Options={'moveTo', 'Tween', 'Teleport'}, CurrentOption={farmMethod}, Callback=function(opt)
+MiscTab:CreateDropdown({Name='Farm method', Options={'moveTo', 'Tween'}, CurrentOption={farmMethod}, Callback=function(opt)
     farmMethod = opt[1]
     saveCurrent()
 end})
-MiscTab:CreateInput({Name='Tween & Teleport Speed', PlaceholderText='1', RemoveTextAfterFocusLost=false, Callback=function(text)
+MiscTab:CreateInput({Name='Tween Speed', PlaceholderText='1', RemoveTextAfterFocusLost=false, Callback=function(text)
     local num = tonumber(text)
     if num then
         farmSpeed = num
@@ -773,6 +793,7 @@ end
 local lastEggsOpened = -1
 local stalledTime = 0
 local lastBlowAt = 0
+local lastPathDrawAt = 0
 
 local lastTick = os.clock()
 while true do
@@ -785,6 +806,20 @@ while true do
         if now - lastBlowAt >= 0.5 then
             lastBlowAt = now
             pcall(function() Event:FireServer('BlowBubble') end)
+        end
+    end
+
+    if farmPickupsEnabled and (now - lastPathDrawAt >= 1) then
+        lastPathDrawAt = now
+        local pickupsFolder = Workspace:FindFirstChild('Pickups')
+        if pickupsFolder then
+            local parts = {}
+            for _, part in ipairs(pickupsFolder:GetDescendants()) do
+                if part:IsA('BasePart') and part.Name == 'Part' then
+                    table.insert(parts, part)
+                end
+            end
+            drawPathBetweenParts(parts)
         end
     end
 
