@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v22
+-- BGS Egg Opener - Fixed v23
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: WalkSpeed (24) and JumpPower (70) editable
+-- Misc tab: Auto Blow Toggle at top, WalkSpeed (24) and JumpPower (70) editable
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -71,6 +71,7 @@ local autoGroupBenefits = config.autoGroupBenefits or false
 local autoSpinToWin = config.autoSpinToWin or false
 local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
+local autoBlowEnabled = false
 local moveSpeed = 24
 local jumpHeight = 70
 
@@ -426,7 +427,7 @@ local function saveCurrent()
         teleportEnabled=teleportEnabled, teleportMode=teleportMode, teleportTimeout=teleportTimeout,
         webhookEnabled=webhookEnabled, webhookURL=webhookURL, eventsEnabled=eventsEnabled,
         autoGroupBenefits=autoGroupBenefits, autoSpinToWin=autoSpinToWin, autoDailyRewards=autoDailyRewards,
-        autoAlienSpinToWin=autoAlienSpinToWin, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
+        autoAlienSpinToWin=autoAlienSpinToWin, autoBlowEnabled=autoBlowEnabled, moveSpeed=moveSpeed, jumpHeight=jumpHeight})
 end
 
 MainTab:CreateParagraph({Title='Egg Opener', Content='Auto hatch eggs'})
@@ -521,6 +522,9 @@ TasksTab:CreateToggle({Name='Auto Daily Rewards', CurrentValue=autoDailyRewards,
 end})
 local DailyLabel = TasksTab:CreateLabel('Off')
 
+MiscTab:CreateParagraph({Title='Auto Blow', Content='Blow bubbles every 0.5 seconds'})
+MiscTab:CreateToggle({Name='Auto Blow', CurrentValue=autoBlowEnabled, Callback=function(v) autoBlowEnabled = v saveCurrent() end})
+
 MiscTab:CreateParagraph({Title='Character', Content='Change WalkSpeed and JumpPower'})
 MiscTab:CreateInput({Name='WalkSpeed', PlaceholderText='24', RemoveTextAfterFocusLost=false, Callback=function(text)
     local num = tonumber(text)
@@ -581,6 +585,7 @@ end
 
 local lastEggsOpened = -1
 local stalledTime = 0
+local lastBlowAt = 0
 
 local lastTick = os.clock()
 while true do
@@ -588,6 +593,13 @@ while true do
     local now = os.clock()
     local delta = now - lastTick
     lastTick = now
+
+    if autoBlowEnabled then
+        if now - lastBlowAt >= 0.5 then
+            lastBlowAt = now
+            pcall(function() Event:FireServer('BlowBubble') end)
+        end
+    end
 
     if autoHatchEnabled and teleportEnabled and teleportMode == 'Hatching Stalled' then
         local currentEggsOpened = getEggsOpened()
