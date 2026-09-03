@@ -1,7 +1,7 @@
--- BGS Egg Opener - Fixed v28
+-- BGS Egg Opener - Fixed v29
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Misc tab: Auto Blow, Farm Pickups with Farm method, Discover Islands, WalkSpeed and JumpPower
+-- Misc tab: Auto Blow, Farm Pickups with method and speed, Discover Islands, WalkSpeed and JumpPower
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -504,11 +504,10 @@ local function farmPickups()
                 end
             end
             if nearest then
+                local targetPos = nearest.Position + Vector3.new(0, -3, 0)
                 if farmMethod == 'moveTo' then
-                    humanoid:MoveTo(nearest.Position)
+                    humanoid:MoveTo(targetPos)
                     humanoid.MoveToFinished:Wait()
-                    local targetPos = nearest.Position
-                    local hrpPos = hrp.Position
                     local offset = 5
                     local directions = {
                         Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
@@ -524,17 +523,31 @@ local function farmPickups()
                         wait(0.05)
                     end
                 elseif farmMethod == 'Tween' then
-                    local targetPos = nearest.Position + Vector3.new(0, 3, 0)
+                    local speed = farmSpeed
                     local dist = (targetPos - hrp.Position).Magnitude
-                    local tweenTime = dist / (farmSpeed * 10)
-                    tweenTime = math.clamp(tweenTime, 0.1, 10)
+                    local tweenTime = dist / speed
+                    tweenTime = math.clamp(tweenTime, 0.05, 30)
                     local tween = TweenService:Create(hrp, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos)})
                     tween:Play()
                     tween.Completed:Wait()
-                    wait(0.1)
+                    local bounceDir = 1
+                    while farmPickupsEnabled and nearest and nearest.Parent and nearest:IsDescendantOf(Workspace) do
+                        local bouncePos = hrp.Position + Vector3.new(0, bounceDir * 3, 0)
+                        local bounceTween = TweenService:Create(hrp, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {CFrame = CFrame.new(bouncePos)})
+                        bounceTween:Play()
+                        bounceTween.Completed:Wait()
+                        bounceDir = -bounceDir
+                        wait(0.05)
+                    end
                 elseif farmMethod == 'Teleport' then
-                    hrp.CFrame = CFrame.new(nearest.Position + Vector3.new(0, 3, 0))
-                    wait(0.1)
+                    hrp.CFrame = CFrame.new(targetPos)
+                    local bounceDir = 1
+                    while farmPickupsEnabled and nearest and nearest.Parent and nearest:IsDescendantOf(Workspace) do
+                        wait(math.max(0.1, 1 / farmSpeed))
+                        local bouncePos = hrp.Position + Vector3.new(0, bounceDir * 3, 0)
+                        hrp.CFrame = CFrame.new(bouncePos)
+                        bounceDir = -bounceDir
+                    end
                 end
             else
                 wait(0.5)
@@ -665,16 +678,13 @@ MiscTab:CreateDropdown({Name='Farm method', Options={'moveTo', 'Tween', 'Telepor
     farmMethod = opt[1]
     saveCurrent()
 end})
-MiscTab:CreateSlider({
-    Name = 'Tween & Teleport Speed',
-    Range = {0.1, 10},
-    Increment = 0.1,
-    CurrentValue = farmSpeed,
-    Callback = function(v)
-        farmSpeed = v
+MiscTab:CreateInput({Name='Tween & Teleport Speed', PlaceholderText='1', RemoveTextAfterFocusLost=false, Callback=function(text)
+    local num = tonumber(text)
+    if num then
+        farmSpeed = num
         saveCurrent()
     end
-})
+end})
 MiscTab:CreateParagraph({Title='Discovery', Content='Teleport to all undiscovered floating islands'})
 MiscTab:CreateDivider()
 MiscTab:CreateButton({Name='Discover Islands', Callback=function() discoverIslands() end})
