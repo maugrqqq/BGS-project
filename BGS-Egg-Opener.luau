@@ -1,4 +1,4 @@
--- BGS Egg Opener - Fixed v29
+-- BGS Egg Opener - Fixed v30
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
 -- Misc tab: Auto Blow, Farm Pickups with method and speed, Discover Islands, WalkSpeed and JumpPower
@@ -72,12 +72,12 @@ local autoGroupBenefits = config.autoGroupBenefits or false
 local autoSpinToWin = config.autoSpinToWin or false
 local autoDailyRewards = config.autoDailyRewards or false
 local autoAlienSpinToWin = config.autoAlienSpinToWin or false
-local autoBlowEnabled = false
-local farmPickupsEnabled = false
-local farmMethod = 'moveTo'
-local farmSpeed = 1
-local moveSpeed = 24
-local jumpHeight = 70
+local autoBlowEnabled = config.autoBlowEnabled or false
+local farmPickupsEnabled = config.farmPickupsEnabled or false
+local farmMethod = config.farmMethod or 'moveTo'
+local farmSpeed = tonumber(config.farmSpeed) or 1
+local moveSpeed = tonumber(config.moveSpeed) or 24
+local jumpHeight = tonumber(config.jumpHeight) or 70
 
 local LocalPlayer = game.Players.LocalPlayer
 local Workspace = game:GetService('Workspace')
@@ -514,7 +514,9 @@ local function farmPickups()
                         Vector3.new(0, 0, 1), Vector3.new(0, 0, -1)
                     }
                     local step = 0
-                    while farmPickupsEnabled and nearest and nearest.Parent and nearest:IsDescendantOf(Workspace) do
+                    local bounceTime = math.clamp(1 / farmSpeed, 0.1, 2)
+                    local startTime = os.clock()
+                    while farmPickupsEnabled and (os.clock() - startTime) < bounceTime do
                         step = step + 1
                         local dir = directions[(step - 1) % 4 + 1]
                         local newPos = hrp.Position + dir * offset
@@ -531,24 +533,28 @@ local function farmPickups()
                     tween:Play()
                     tween.Completed:Wait()
                     local bounceDir = 1
-                    while farmPickupsEnabled and nearest and nearest.Parent and nearest:IsDescendantOf(Workspace) do
+                    local bounceCount = math.max(1, math.floor(speed / 10))
+                    for i = 1, bounceCount do
+                        if not farmPickupsEnabled then break end
                         local bouncePos = hrp.Position + Vector3.new(0, bounceDir * 3, 0)
                         local bounceTween = TweenService:Create(hrp, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {CFrame = CFrame.new(bouncePos)})
                         bounceTween:Play()
                         bounceTween.Completed:Wait()
                         bounceDir = -bounceDir
-                        wait(0.05)
                     end
                 elseif farmMethod == 'Teleport' then
                     hrp.CFrame = CFrame.new(targetPos)
                     local bounceDir = 1
-                    while farmPickupsEnabled and nearest and nearest.Parent and nearest:IsDescendantOf(Workspace) do
+                    local bounceCount = math.max(1, math.floor(farmSpeed / 10))
+                    for i = 1, bounceCount do
+                        if not farmPickupsEnabled then break end
                         wait(math.max(0.1, 1 / farmSpeed))
                         local bouncePos = hrp.Position + Vector3.new(0, bounceDir * 3, 0)
                         hrp.CFrame = CFrame.new(bouncePos)
                         bounceDir = -bounceDir
                     end
                 end
+                wait(0.1)
             else
                 wait(0.5)
             end
