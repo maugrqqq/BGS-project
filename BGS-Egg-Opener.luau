@@ -1,7 +1,8 @@
--- BGS Egg Opener - Fixed v35
+-- BGS Egg Opener - Fixed v36
 -- AlienSpinLabel после тумблера
 -- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
 -- Pickups tab: Farm pickups algorithm from optimized script
+-- Trackers tab: Egg cost and hatch time
 -- Anti-AFK on script start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
@@ -56,6 +57,7 @@ local Window = Rayfield:CreateWindow({
     Discord = {Enabled = false, Invite = '', RememberJoins = true}, KeySystem = false
 })
 local MainTab = Window:CreateTab('Main', 4483362458)
+local TrackersTab = Window:CreateTab('Trackers', 4483362458)
 local EventTab = Window:CreateTab('Events', 4483362458)
 local WebhookTab = Window:CreateTab('Webhook', 4483362458)
 local TasksTab = Window:CreateTab('Tasks', 4483362458)
@@ -477,7 +479,7 @@ local function discoverIslands()
     end)
 end
 
--- ===== FARM PICKUPS ALGORITHM (from optimized script) =====
+-- ===== FARM PICKUPS ALGORITHM =====
 local pickupPathThread = nil
 local function stopPickupLoop()
     pickupLoopEnabled = false
@@ -628,6 +630,12 @@ MainTab:CreateSlider({
         saveCurrent()
     end
 })
+TrackersTab:CreateParagraph({Title='Egg Info', Content='Cost and hatch duration'})
+local selectedEggCost = TrackersTab:CreateLabel('Cost: 100000 AlienCoins')
+local hatchDuration = TrackersTab:CreateLabel('Hatch Time: 2.5s')
+local canOpenCount = TrackersTab:CreateLabel('Can Open: 0')
+TrackersTab:CreateParagraph({Title='Stats', Content='Eggs opened'})
+local eggsOpenedLabel = TrackersTab:CreateLabel('Eggs Opened: 0')
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
 WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets to Discord'})
@@ -789,6 +797,7 @@ if pickupLoopEnabled then startPickupLoop() end
 local lastEggsOpened = -1
 local stalledTime = 0
 local lastBlowAt = 0
+local lastTrackerRefresh = 0
 
 local lastTick = os.clock()
 while true do
@@ -801,6 +810,40 @@ while true do
         if now - lastBlowAt >= 0.5 then
             lastBlowAt = now
             pcall(function() Event:FireServer('BlowBubble') end)
+        end
+    end
+
+    if now - lastTrackerRefresh >= 1 then
+        lastTrackerRefresh = now
+        local eggsOpened = getEggsOpened()
+        if eggsOpened >= 0 then
+            eggsOpenedLabel:Set('Eggs Opened: ' .. eggsOpened)
+        end
+        local playerGui = LocalPlayer:FindFirstChild('PlayerGui')
+        local screenGui = playerGui and playerGui:FindFirstChild('ScreenGui')
+        local statsFrame = screenGui and screenGui:FindFirstChild('StatsFrame')
+        local alienCoins = statsFrame and statsFrame:FindFirstChild('AlienCoins')
+        local amountNode = alienCoins and alienCoins:FindFirstChild('Amount')
+        if amountNode then
+            local amount = tonumber((amountNode.Text or ''):gsub(',', ''))
+            if amount then
+                local eggCost = 100000
+                local canOpen = math.floor(amount / eggCost)
+                canOpenCount:Set('Can Open: ' .. canOpen)
+                local totalSeconds = canOpen * 2.5
+                local hours = math.floor(totalSeconds / 3600)
+                local mins = math.floor((totalSeconds % 3600) / 60)
+                hatchDuration:Set(string.format('Hatch Time: 2.5s | Hours: %02d:%02d', hours, mins))
+            end
+        end
+        if selectedEgg ~= '' then
+            local eggCosts = {
+                ['Hacker Egg'] = 100000,
+                ['Alien Egg'] = 40000,
+                ['Space Crystal Egg'] = 1500
+            }
+            local cost = eggCosts[selectedEgg] or 100000
+            selectedEggCost:Set('Cost: ' .. cost .. ' AlienCoins')
         end
     end
 
