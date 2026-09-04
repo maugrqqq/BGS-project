@@ -1,6 +1,6 @@
--- BGS Egg Opener - Fixed v37
--- Trackers tab: all egg costs and hatch time
--- Pickups: optimized algorithm
+-- BGS Egg Opener - Fixed v38
+-- Tab icons added
+-- Trackers: balance, opens count, time for selected egg
 -- Anti-AFK on start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
@@ -54,13 +54,13 @@ local Window = Rayfield:CreateWindow({
     ConfigurationSaving = {Enabled = true, FolderName = nil, FileName = 'BGS_Egg_Opener'},
     Discord = {Enabled = false, Invite = '', RememberJoins = true}, KeySystem = false
 })
-local MainTab = Window:CreateTab('Main', 4483362458)
-local TrackersTab = Window:CreateTab('Trackers', 4483362458)
-local EventTab = Window:CreateTab('Events', 4483362458)
-local WebhookTab = Window:CreateTab('Webhook', 4483362458)
-local TasksTab = Window:CreateTab('Tasks', 4483362458)
-local PickupsTab = Window:CreateTab('Pickups', 4483362458)
-local MiscTab = Window:CreateTab('Misc', 4483362458)
+local MainTab = Window:CreateTab('Main', 16898669689)
+local TrackersTab = Window:CreateTab('Trackers', 16898615143)
+local EventTab = Window:CreateTab('Events', 16898735175)
+local WebhookTab = Window:CreateTab('Webhook', 16898790996)
+local TasksTab = Window:CreateTab('Tasks', 16898674482)
+local PickupsTab = Window:CreateTab('Pickups', 16898616650)
+local MiscTab = Window:CreateTab('Misc', 16898734421)
 
 local selectedEgg = config.selectedEgg or 'Hacker Egg'
 local autoHatchEnabled = config.autoHatchEnabled or false
@@ -638,13 +638,15 @@ MainTab:CreateSlider({
         saveCurrent()
     end
 })
-TrackersTab:CreateParagraph({Title='Egg Costs', Content='All eggs and their prices'})
-local eggTrackerLabels = {}
+TrackersTab:CreateParagraph({Title='Selected Egg Info', Content='Balance, opens, and time'})
+local selectedEggCostLabel = TrackersTab:CreateLabel('Cost: N/A')
+local balanceLabel = TrackersTab:CreateLabel('Balance: N/A')
+local canOpenLabel = TrackersTab:CreateLabel('Can Open: N/A')
+local timeToOpenLabel = TrackersTab:CreateLabel('Time to Open All: N/A')
+TrackersTab:CreateParagraph({Title='All Eggs', Content='Egg costs'})
 for name, data in pairs(eggCostData) do
-    eggTrackerLabels[name] = TrackersTab:CreateLabel(name .. ': ' .. data.costAmount .. ' ' .. data.costType)
+    TrackersTab:CreateLabel(name .. ': ' .. data.costAmount .. ' ' .. data.costType)
 end
-local selectedEggInfoLabel = TrackersTab:CreateLabel('Selected: ' .. selectedEgg)
-local eggsOpenedLabel = TrackersTab:CreateLabel('Eggs Opened: 0')
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
 WebhookTab:CreateParagraph({Title='Discord Webhook', Content='Send hatched pets to Discord'})
@@ -824,11 +826,58 @@ while true do
 
     if now - lastTrackerRefresh >= 1 then
         lastTrackerRefresh = now
-        local eggsOpened = getEggsOpened()
-        if eggsOpened >= 0 then
-            eggsOpenedLabel:Set('Eggs Opened: ' .. eggsOpened)
+        local eggInfo = eggCostData[selectedEgg]
+        if eggInfo then
+            selectedEggCostLabel:Set('Cost: ' .. eggInfo.costAmount .. ' ' .. eggInfo.costType)
+            local balance = 0
+            local playerGui = LocalPlayer:FindFirstChild('PlayerGui')
+            local screenGui = playerGui and playerGui:FindFirstChild('ScreenGui')
+            local statsFrame = screenGui and screenGui:FindFirstChild('StatsFrame')
+            if statsFrame then
+                local currencyMap = {
+                    ['Coins'] = 'Coins',
+                    ['Gems'] = 'Gems',
+                    ['AlienCoins'] = 'AlienCoins',
+                    ['Shells'] = 'Shells',
+                    ['Pearls'] = 'Pearls',
+                    ['Blocks'] = 'Blocks',
+                    ['Candy'] = 'Candy',
+                    ['Crystals'] = 'Crystals',
+                    ['Magma'] = 'Magma',
+                    ['Stars'] = 'Stars',
+                    ['Flowers'] = 'Flowers',
+                    ['Bells'] = 'Bells',
+                    ['Snowflakes'] = 'Snowflakes',
+                    ['CandyCanes'] = 'CandyCanes',
+                    ['CandyCorn'] = 'CandyCorn',
+                    ['Treats'] = 'Treats',
+                    ['Tickets'] = 'Tickets',
+                    ['Tokens'] = 'Tokens',
+                    ['Presents'] = 'Presents',
+                    ['Rainbows'] = 'Rainbows',
+                    ['Lollipops'] = 'Lollipops',
+                    ['Halos'] = 'Halos',
+                    ['Silver'] = 'Silver'
+                }
+                local currencyName = currencyMap[eggInfo.costType] or eggInfo.costType
+                local currencyObj = statsFrame:FindFirstChild(currencyName)
+                if currencyObj then
+                    local amountNode = currencyObj:FindFirstChild('Amount')
+                    if amountNode then
+                        balance = tonumber((amountNode.Text or ''):gsub(',', '')) or 0
+                    end
+                end
+            end
+            balanceLabel:Set('Balance: ' .. balance .. ' ' .. eggInfo.costType)
+            local canOpen = math.floor(balance / eggInfo.costAmount)
+            canOpenLabel:Set('Can Open: ' .. canOpen)
+            local timePerEgg = 2.5
+            local totalSeconds = canOpen * timePerEgg
+            local hours = math.floor(totalSeconds / 3600)
+            local mins = math.floor((totalSeconds % 3600) / 60)
+            local secs = math.floor(totalSeconds % 60)
+            timeToOpenLabel:Set(string.format('Time to Open All: %02d:%02d:%02d', hours, mins, secs))
         end
-        selectedEggInfoLabel:Set('Selected: ' .. selectedEgg)
     end
 
     if autoHatchEnabled and teleportEnabled and teleportMode == 'Hatching Stalled' then
