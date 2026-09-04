@@ -1,9 +1,7 @@
--- BGS Egg Opener - Fixed v36
--- AlienSpinLabel после тумблера
--- Chat detection: working legacy chat method (OnMessageDoneFiltering with messageData.Message)
--- Pickups tab: Farm pickups algorithm from optimized script
--- Trackers tab: Egg cost and hatch time
--- Anti-AFK on script start
+-- BGS Egg Opener - Fixed v37
+-- Trackers tab: all egg costs and hatch time
+-- Pickups: optimized algorithm
+-- Anti-AFK on start
 
 local NetworkRemoteEvent = game.ReplicatedStorage.NetworkRemoteEvent
 local Services = require(game.ReplicatedStorage.Assets.Modules.Services)
@@ -99,6 +97,16 @@ if eggsFolder then
 end
 table.sort(eggList)
 if #eggList == 0 then eggList = {'Common Egg','Spotted Egg','Hacker Egg'} end
+
+local eggCostData = {}
+pcall(function()
+    local EggModule = require(game.ReplicatedStorage.Assets.Modules.ItemDataService.EggModule)
+    for name, data in pairs(EggModule) do
+        if type(data) == 'table' and data.Cost then
+            eggCostData[name] = {costType = data.Cost[1], costAmount = data.Cost[2]}
+        end
+    end
+end)
 
 local groupSeconds = -1
 local dailyText = 'Off'
@@ -630,11 +638,12 @@ MainTab:CreateSlider({
         saveCurrent()
     end
 })
-TrackersTab:CreateParagraph({Title='Egg Info', Content='Cost and hatch duration'})
-local selectedEggCost = TrackersTab:CreateLabel('Cost: 100000 AlienCoins')
-local hatchDuration = TrackersTab:CreateLabel('Hatch Time: 2.5s')
-local canOpenCount = TrackersTab:CreateLabel('Can Open: 0')
-TrackersTab:CreateParagraph({Title='Stats', Content='Eggs opened'})
+TrackersTab:CreateParagraph({Title='Egg Costs', Content='All eggs and their prices'})
+local eggTrackerLabels = {}
+for name, data in pairs(eggCostData) do
+    eggTrackerLabels[name] = TrackersTab:CreateLabel(name .. ': ' .. data.costAmount .. ' ' .. data.costType)
+end
+local selectedEggInfoLabel = TrackersTab:CreateLabel('Selected: ' .. selectedEgg)
 local eggsOpenedLabel = TrackersTab:CreateLabel('Eggs Opened: 0')
 EventTab:CreateParagraph({Title='Events', Content='Activate 2x events'})
 EventTab:CreateToggle({Name='Enable Weekend Event', CurrentValue=eventsEnabled, Callback=function(v) eventsEnabled = v if v then enableEvents() else disableEvents() end saveCurrent() end})
@@ -819,32 +828,7 @@ while true do
         if eggsOpened >= 0 then
             eggsOpenedLabel:Set('Eggs Opened: ' .. eggsOpened)
         end
-        local playerGui = LocalPlayer:FindFirstChild('PlayerGui')
-        local screenGui = playerGui and playerGui:FindFirstChild('ScreenGui')
-        local statsFrame = screenGui and screenGui:FindFirstChild('StatsFrame')
-        local alienCoins = statsFrame and statsFrame:FindFirstChild('AlienCoins')
-        local amountNode = alienCoins and alienCoins:FindFirstChild('Amount')
-        if amountNode then
-            local amount = tonumber((amountNode.Text or ''):gsub(',', ''))
-            if amount then
-                local eggCost = 100000
-                local canOpen = math.floor(amount / eggCost)
-                canOpenCount:Set('Can Open: ' .. canOpen)
-                local totalSeconds = canOpen * 2.5
-                local hours = math.floor(totalSeconds / 3600)
-                local mins = math.floor((totalSeconds % 3600) / 60)
-                hatchDuration:Set(string.format('Hatch Time: 2.5s | Hours: %02d:%02d', hours, mins))
-            end
-        end
-        if selectedEgg ~= '' then
-            local eggCosts = {
-                ['Hacker Egg'] = 100000,
-                ['Alien Egg'] = 40000,
-                ['Space Crystal Egg'] = 1500
-            }
-            local cost = eggCosts[selectedEgg] or 100000
-            selectedEggCost:Set('Cost: ' .. cost .. ' AlienCoins')
-        end
+        selectedEggInfoLabel:Set('Selected: ' .. selectedEgg)
     end
 
     if autoHatchEnabled and teleportEnabled and teleportMode == 'Hatching Stalled' then
